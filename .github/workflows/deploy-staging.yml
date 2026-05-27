@@ -1,0 +1,23 @@
+name: Deploy to Staging
+
+# Triggers automatically on pushes to the dev branch
+on:
+  push:
+    branches: [ "dev" ]
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    
+    # Optional: Only run deployment if your CI tests pass first!
+    # needs: [build-and-test] 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Runs Railway CLI on-the-fly and deploys specifically to the staging environment
+      - name: Deploy to Railway Staging
+        run: npx @railway/cli up --environment staging --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
