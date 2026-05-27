@@ -1,0 +1,37 @@
+name: "CodeQL Security Scan"
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+  schedule:
+    - cron: '0 0 * * 0' # Also runs automatically every Sunday at midnight
+
+jobs:
+  analyze:
+    name: Analyze Code
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Initializes the CodeQL tools for scanning
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: 'javascript-typescript' # Covers JS and TS
+        queries: security-extended # Run extended security checks
+
+    # Compile TypeScript/JavaScript type references
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    # Analyzes the code and uploads results to the GitHub Security tab
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
