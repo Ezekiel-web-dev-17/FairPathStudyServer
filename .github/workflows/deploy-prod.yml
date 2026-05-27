@@ -1,0 +1,26 @@
+name: Deploy to Production
+
+# Triggers ONLY when you push a version tag (e.g., git tag v1.0.1 && git push origin v1.0.1)
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    
+    # Adds a GitHub Environment for tracking deployments
+    environment: 
+      name: production
+      url: https://your-production-url.up.railway.app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Runs Railway CLI on-the-fly and deploys specifically to the production environment
+      - name: Deploy to Railway Production
+        run: npx @railway/cli up --environment production --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
