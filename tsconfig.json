@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "nodenext",
+    "isolatedModules": true,
+    "types": ["jest", "node"],
+    "typeRoots": ["./node_modules/@types"]
+  },
+  "include": ["src/**/*", "prisma/**/*", "jest.setup.ts"],
+  "exclude": ["node_modules", "dist"]
+}

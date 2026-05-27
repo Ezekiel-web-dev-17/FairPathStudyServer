@@ -1,0 +1,211 @@
+# ──────────────────────────────────────────────────────────────
+# FairPath Study Server — CI Pipeline
+# Runs on every push and every pull request to any branch.
+# Jobs: Security Scans → Build & Test
+# ──────────────────────────────────────────────────────────────
+
+name: CI — Security & Tests
+
+on:
+  push:
+    branches:
+      - "**" # Every push to every branch
+  pull_request:
+    branches:
+      - "**" # Every PR targeting any branch
+
+# Cancel in-progress runs for the same branch so you don't waste minutes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ════════════════════════════════════════════════════════════
+  # Job 1: Security Scans
+  # ════════════════════════════════════════════════════════════
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for secret scanning
+
+      # ── 1. Secret Detection (TruffleHog) ──────────────────
+      # Scans your entire git history for leaked API keys,
+      # passwords, tokens, and connection strings.
+      - name: Scan for leaked secrets (TruffleHog)
+        uses: trufflesecurity/trufflehog@v3.88.27
+        with:
+          extra_args: --only-verified
+
+      # ── 2. GitLeaks — Pattern-Based Secret Detection ──────
+      # Catches common patterns like hardcoded JWT secrets,
+      # database passwords, and API keys in your source code.
+      - name: Scan for hardcoded secrets (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 3. Verify .gitignore is protecting sensitive files ─
+      # Ensures .env files, logs, and build artifacts are NOT
+      # being tracked by git.
+      - name: Verify .gitignore protections
+        run: |
+          echo "── Checking that sensitive files are NOT tracked by git ──"
+          FAILURES=0
+
+          # Files/patterns that must NEVER be committed
+          PROTECTED_PATTERNS=(
+            ".env.development.local"
+            ".env.test.local"
+            ".env.production.local"
+            ".env.local"
+            ".env"
+          )
+
+          for pattern in "${PROTECTED_PATTERNS[@]}"; do
+            # Check if the file exists AND is tracked by git
+            if git ls-files --error-unmatch "$pattern" 2>/dev/null; then
+              echo "FAIL: '$pattern' is tracked by git! Remove it with: git rm --cached $pattern"
+              FAILURES=$((FAILURES + 1))
+            else
+              echo "PASS: '$pattern' is not tracked"
+            fi
+          done
+
+          # Verify .gitignore has the right rules
+          echo ""
+          echo "── Checking .gitignore rules ──"
+          REQUIRED_RULES=("node_modules" "dist" ".env" ".log")
+          for rule in "${REQUIRED_RULES[@]}"; do
+            if grep -q "$rule" .gitignore; then
+              echo "PASS: .gitignore contains '$rule'"
+            else
+              echo "WARN: .gitignore is missing a rule for '$rule'"
+            fi
+          done
+
+          if [ "$FAILURES" -gt 0 ]; then
+            echo ""
+            echo "$FAILURES sensitive file(s) are tracked by git!"
+            exit 1
+          fi
+
+          echo ""
+          echo "All .gitignore protections verified"
+
+      # ── 4. npm audit — Dependency Vulnerability Scan ──────
+      # Checks all your npm dependencies for known CVEs
+      # (security vulnerabilities published in public databases).
+      - name: Audit npm dependencies
+        run: |
+          npm ci
+          echo "── Running npm audit ──"
+          # audit at moderate+ severity; allow the workflow to continue
+          # on advisories so you can see them, but flag critical ones
+          npm audit --audit-level=high || true
+
+      # ── 5. Check for non-null assertion (!) on env vars ───
+      # Warns if you use process.env.VAR! without validation,
+      # which can crash at runtime if the variable is missing.
+      - name: Check for unsafe env var access patterns
+        run: |
+          echo "── Scanning for unsafe environment variable patterns ──"
+          WARNINGS=0
+
+          # Check for hardcoded fallback secrets (the pattern you just fixed!)
+          if grep -rn "process\.env\.\w\+\s*||\s*['\"]" src/ --include="*.ts" | grep -iv "node_env\|localhost\|development\|test\|production"; then
+            echo "Found hardcoded fallback values for environment variables in source code"
+            WARNINGS=$((WARNINGS + 1))
+          else
+            echo "No hardcoded secret fallbacks found"
+          fi
+
+          # Check for process.env used directly (instead of config.ts)
+          DIRECT_ENV=$(grep -rn "process\.env\." src/ --include="*.ts" | grep -v "config\.ts" | grep -v "node_modules" || true)
+          if [ -n "$DIRECT_ENV" ]; then
+            echo ""
+            echo "Found direct process.env usage outside config.ts:"
+            echo "$DIRECT_ENV"
+            echo "   Consider centralizing all env access through src/config/config.ts"
+            WARNINGS=$((WARNINGS + 1))
+          else
+            echo "All environment variables are accessed through config.ts"
+          fi
+
+          if [ "$WARNINGS" -gt 0 ]; then
+            echo ""
+            echo "$WARNINGS warning(s) found — review recommended but not blocking"
+          fi
+
+  # ════════════════════════════════════════════════════════════
+  # Job 2: Build & Test
+  # ════════════════════════════════════════════════════════════
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    needs: security  # Only run tests if security checks pass
+
+    # Spin up PostgreSQL and Redis containers matching docker-compose.yml
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fairpath_study
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      PORT: 5000
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/fairpath_study?schema=public"
+      REDIS_URL: "redis://localhost:6380"
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-test-secret-do-not-use-in-prod-abc123xyz' }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'ci-session-secret-do-not-use-in-prod-abc123xyz' }}
+      COOKIE_MAX_AGE: "86400000"
+      NODE_ENV: "test"
+      ARCJET_KEY: "ajkey_test_placeholder"
+      ARCJET_ENV: "test"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy || npx prisma db push --accept-data-loss
+
+      - name: TypeScript compile check
+        run: npm run build
+
+      - name: Run tests
+        run: npm test

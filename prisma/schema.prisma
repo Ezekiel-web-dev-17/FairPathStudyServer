@@ -1,0 +1,101 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id                       String        @id @default(uuid())
+  email                    String        @unique
+  passwordHash             String
+  role                     Role          @default(STUDENT)
+  firstName                String?
+  lastName                 String?
+  countryOfOrigin          String?
+  targetDestinations       String[]
+  academicData             Json?         // Stores GPA, test scores (SAT/ACT/IELTS), current level
+  preferences              Json?         // Stores budget, desired majors, campus setting
+  profileCompletionPercent Int           @default(0)
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+  savedMatches             SavedMatch[]
+  applications             Application[]
+}
+
+model University {
+  id              String        @id @default(uuid())
+  name            String
+  slug            String        @unique
+  locationCity    String
+  locationCountry String
+  rankingGlobal   Int?
+  rankingNational Int?
+  tuitionMin      Float
+  tuitionMax      Float
+  setting         String        // URBAN, SUBURBAN, RURAL
+  type            String        // PUBLIC, PRIVATE
+  acceptanceRate  Float?
+  studentBodySize Int?
+  description     String        @db.Text
+  featuredImage   String?
+  departments     String[]
+  isFeatured      Boolean       @default(false)
+  isPartner       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  applications    Application[]
+}
+
+model Scholarship {
+  id                  String   @id @default(uuid())
+  title               String
+  provider            String
+  amountType          String   // Fixed, Range, Full Tuition
+  amountValue         Float?
+  amountMaxValue      Float?
+  deadline            DateTime
+  category            String   // Merit, Need-based, STEM, etc.
+  eligibilityCriteria String   @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model SavedMatch {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchType String   // UNIVERSITY or SCHOLARSHIP
+  matchId   String   // Reference to University or Scholarship ID
+  savedAt   DateTime @default(now())
+
+  @@unique([userId, matchType, matchId])
+}
+
+model Application {
+  id           String            @id @default(uuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  universityId String
+  university   University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  programId    String?           // The course or department applied to
+  status       ApplicationStatus @default(DRAFT)
+  deadline     DateTime
+  documents    String[]          // Array of file URLs/references
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
