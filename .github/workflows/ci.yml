@@ -140,6 +140,10 @@ jobs:
             echo "$WARNINGS warning(s) found — review recommended but not blocking"
           fi
 
+      # 6. Run ESLint to check for code quality issues
+      - name: Run Linter
+        run: npx eslint .
+
   # ════════════════════════════════════════════════════════════
   # Job 2: Build & Test
   # ════════════════════════════════════════════════════════════

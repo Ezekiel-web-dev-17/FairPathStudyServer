@@ -11,7 +11,9 @@
     "migrate": "npx prisma migrate dev",
     "generate": "npx prisma generate",
     "studio": "npx prisma studio",
-    "test": "cross-env NODE_ENV=test node --experimental-vm-modules --no-warnings node_modules/.bin/jest"
+    "test": "cross-env NODE_ENV=test node --experimental-vm-modules --no-warnings node_modules/.bin/jest",
+    "prepare": "husky install",
+    "lint-staged": "lint-staged"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -45,6 +47,7 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -56,11 +59,24 @@
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
     "@types/supertest": "^7.2.0",
+    "eslint": "^10.4.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "globals": "^17.6.0",
+    "husky": "^8.0.0",
     "jest": "^30.4.2",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.3",
     "prisma": "^7.8.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }
