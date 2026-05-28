@@ -39,19 +39,16 @@ export const cacheMiddleware = (durationInSeconds: number) => {
   };
 };
 
-/**
- * Express middleware that invalidates caches JSON responses in Redis.
- * Cache key is derived from the request URL with a wildcard.
- */
-export const inValidateCacheMiddleware = () => {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const cacheKey = `cache:${req.originalUrl}*`;
+export const inValidateCacheMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const cacheKey = `cache:${req.originalUrl}*`;
 
   try {
-    await redisClient.del(cacheKey);
+    if (redisClient.isOpen) {
+      await redisClient.del(cacheKey);
+    }
     next();
   } catch (err) {
     logger.error(`Error invalidating cache for key ${cacheKey}: %o`, err);
     next(); // fallback to DB query on cache failure
   }
-}};
+};
