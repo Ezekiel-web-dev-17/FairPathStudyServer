@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../config/config.js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -8,6 +9,14 @@ export interface AuthRequest extends Request {
     role: 'STUDENT' | 'ADMIN';
   };
 }
+
+// Define cookie options with strict security guidelines:
+export const cookieOptions = {
+  httpOnly: true, // Prevents XSS attacks by blocking client-side JS access
+  secure: process.env.NODE_ENV === 'production', // Enforces HTTPS in production
+  sameSite: 'lax' as const, // Standard CSRF defense for navigation/API requests
+  maxAge: 24 * 60 * 60 * 1000 // Match your token duration (e.g., 24 hours in ms)
+};
 
 export const authenticateJWT = (
   req: AuthRequest,
@@ -18,9 +27,9 @@ export const authenticateJWT = (
 
   if (authHeader) {
     const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET!;
+    const secret = JWT_SECRET!;
 
-    jwt.verify(token, secret, (err, decoded) => {
+    jwt.verify(token, secret, (err: Error | null, decoded: any) => {
       if (err) {
         res.status(403).json({ error: 'Forbidden: Invalid or expired token' });
         return;
@@ -30,6 +39,30 @@ export const authenticateJWT = (
     });
   } else {
     res.status(401).json({ error: 'Unauthorized: Missing authorization header' });
+  }
+};
+
+export const authenticateJWTCookie = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): void => {
+  // Read token from the cookie instead of the Authorization header
+  const token = req.cookies.token;
+
+  if (token) {
+    const secret = JWT_SECRET!;
+
+    jwt.verify(token, secret, (err: Error | null, decoded: any) => {
+      if (err) {
+        res.status(403).json({ error: 'Forbidden: Invalid or expired token' });
+        return;
+      }
+      req.user = decoded as AuthRequest['user'];
+      next();
+    });
+  } else {
+    res.status(401).json({ error: 'Unauthorized: Missing token cookie' });
   }
 };
 
