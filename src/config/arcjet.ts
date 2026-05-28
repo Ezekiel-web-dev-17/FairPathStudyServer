@@ -28,7 +28,7 @@ export const aj = arcjet({
 /**
  * Stricter Arcjet instance for auth-sensitive endpoints.
  * Limits to 10 requests per 60 seconds to prevent brute-force attacks.
- * Uses ARCJET_AUTH_KEY with fallback to ARCJET_KEY.
+ * Uses ARCJET_KEY with fallback to ARCJET_KEY.
  */
 export const authAj = arcjet({
   key: ARCJET_KEY!,
