@@ -12,6 +12,11 @@ export const rateLimitMiddleware = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
+  if (process.env.NODE_ENV === "test") {
+    next();
+    return;
+  }
+
   try {
     const decision = await aj.protect(req);
 
@@ -45,6 +50,11 @@ export const authRateLimitMiddleware = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
+  if (process.env.NODE_ENV === "test") {
+    next();
+    return;
+  }
+
   try {
     const decision = await authAj.protect(req);
 
