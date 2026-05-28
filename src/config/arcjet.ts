@@ -1,5 +1,5 @@
 import arcjet, { shield, fixedWindow, detectBot } from "@arcjet/node";
-import { ARCJET_KEY } from "./config.js";
+import { ARCJET_KEY, NODE_ENV } from "./config.js";
 
 /**
  * Global Arcjet instance with layered security rules.
@@ -13,7 +13,9 @@ export const aj = arcjet({
     shield({ mode: "LIVE" }),
     detectBot({
       mode: "LIVE",
-      deny: ["CATEGORY:AI", "CATEGORY:TOOL", "CATEGORY:PROGRAMMATIC"],
+      deny: NODE_ENV === "development"
+        ? ["CATEGORY:AI"]
+        : ["CATEGORY:AI", "CATEGORY:TOOL", "CATEGORY:PROGRAMMATIC"],
     }),
     fixedWindow({
       mode: "LIVE",
