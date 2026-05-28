@@ -1,5 +1,5 @@
 import arcjet, { shield, fixedWindow, detectBot } from "@arcjet/node";
-import { ARCJET_KEY } from "./config.js";
+import { ARCJET_KEY, NODE_ENV } from "./config.js";
 
 /**
  * Global Arcjet instance with layered security rules.
@@ -13,7 +13,9 @@ export const aj = arcjet({
     shield({ mode: "LIVE" }),
     detectBot({
       mode: "LIVE",
-      deny: ["CATEGORY:AI", "CATEGORY:TOOL", "CATEGORY:PROGRAMMATIC"],
+      deny: NODE_ENV === "development"
+        ? ["CATEGORY:AI"]
+        : ["CATEGORY:AI", "CATEGORY:TOOL", "CATEGORY:PROGRAMMATIC"],
     }),
     fixedWindow({
       mode: "LIVE",
@@ -26,7 +28,7 @@ export const aj = arcjet({
 /**
  * Stricter Arcjet instance for auth-sensitive endpoints.
  * Limits to 10 requests per 60 seconds to prevent brute-force attacks.
- * Uses ARCJET_AUTH_KEY with fallback to ARCJET_KEY.
+ * Uses ARCJET_KEY with fallback to ARCJET_KEY.
  */
 export const authAj = arcjet({
   key: ARCJET_KEY!,

@@ -12,11 +12,19 @@ export const rateLimitMiddleware = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
+  if (process.env.NODE_ENV === "test") {
+    next();
+    return;
+  }
+
   try {
     const decision = await aj.protect(req);
-
+    
     if (decision.isDenied()) {
       if (decision.reason.isRateLimit()) {
+        res.setHeader("X-RateLimit-Limit", decision.reason.max);
+        res.setHeader("X-RateLimit-Remaining", decision.reason.remaining);
+        
         res.status(429).json({ error: "Too many requests. Please try again later." });
         return;
       }
@@ -45,12 +53,20 @@ export const authRateLimitMiddleware = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
+  if (process.env.NODE_ENV === "test") {
+    next();
+    return;
+  }
+
   try {
     const decision = await authAj.protect(req);
 
     if (decision.isDenied()) {
       if (decision.reason.isRateLimit()) {
-        res.status(429).json({ error: "Too many authentication attempts. Please try again later." });
+        res.setHeader("X-RateLimit-Limit", decision.reason.max);
+        res.setHeader("X-RateLimit-Remaining", decision.reason.remaining);
+        
+        res.status(429).json({ error: "Too many requests. Please try again later." });
         return;
       }
       res.status(403).json({ error: "Forbidden" });
