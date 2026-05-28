@@ -19,9 +19,12 @@ export const rateLimitMiddleware = async (
 
   try {
     const decision = await aj.protect(req);
-
+    
     if (decision.isDenied()) {
       if (decision.reason.isRateLimit()) {
+        res.setHeader("X-RateLimit-Limit", decision.reason.max);
+        res.setHeader("X-RateLimit-Remaining", decision.reason.remaining);
+        
         res.status(429).json({ error: "Too many requests. Please try again later." });
         return;
       }
@@ -60,7 +63,10 @@ export const authRateLimitMiddleware = async (
 
     if (decision.isDenied()) {
       if (decision.reason.isRateLimit()) {
-        res.status(429).json({ error: "Too many authentication attempts. Please try again later." });
+        res.setHeader("X-RateLimit-Limit", decision.reason.max);
+        res.setHeader("X-RateLimit-Remaining", decision.reason.remaining);
+        
+        res.status(429).json({ error: "Too many requests. Please try again later." });
         return;
       }
       res.status(403).json({ error: "Forbidden" });
