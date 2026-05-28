@@ -24,5 +24,10 @@ export const {
     NODE_ENV,
     ARCJET_KEY,
     COOKIE_MAX_AGE,
+    BASE_URI,
+    EMAIL_HOST,
+    EMAIL_PORT,
+    EMAIL_USER,
+    EMAIL_PASS,
     SESSION_SECRET,
 } = process.env;
