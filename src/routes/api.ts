@@ -5,34 +5,35 @@ import { getScholarships, getRecommendedScholarships } from '../controllers/scho
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
 import { getAnalytics, createUniversity, updateUniversity } from '../controllers/adminController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
+import { rateLimitMiddleware, authRateLimitMiddleware } from '../middleware/rateLimit.js';
 
 const router = Router();
 
 // ── Authentication & User Profiling ──
-router.post('/auth/register', register);
-router.post('/auth/login', login);
+router.post('/auth/register', authRateLimitMiddleware, register);
+router.post('/auth/login', authRateLimitMiddleware, login);
 router.get('/users/me', authenticateJWT, getMe);
-router.put('/users/me/profile', authenticateJWT, updateProfile);
+router.put('/users/me/profile', authenticateJWT, authRateLimitMiddleware, updateProfile);
 
 // ── Universities ──
-router.get('/universities', getUniversities);
-router.get('/universities/featured', getFeaturedUniversities);
-router.get('/universities/:slug', getUniversityBySlug);
+router.get('/universities', rateLimitMiddleware, getUniversities);
+router.get('/universities/featured', rateLimitMiddleware, getFeaturedUniversities);
+router.get('/universities/:slug', rateLimitMiddleware, getUniversityBySlug);
 
 // ── Scholarships ──
-router.get('/scholarships', getScholarships);
-router.get('/scholarships/recommended', authenticateJWT, getRecommendedScholarships);
+router.get('/scholarships', rateLimitMiddleware, getScholarships);
+router.get('/scholarships/recommended', authenticateJWT, rateLimitMiddleware, getRecommendedScholarships);
 
 // ── Dashboard & User Actions ──
-router.get('/dashboard/summary', authenticateJWT, getDashboardSummary);
-router.get('/favourites', authenticateJWT, getFavourites);
-router.post('/favourites', authenticateJWT, addFavourite);
-router.delete('/favourites/:id', authenticateJWT, deleteFavourite);
-router.get('/applications', authenticateJWT, getApplications);
+router.get('/dashboard/summary', authenticateJWT, rateLimitMiddleware, getDashboardSummary);
+router.get('/favourites', authenticateJWT, rateLimitMiddleware, getFavourites);
+router.post('/favourites', authenticateJWT, rateLimitMiddleware, addFavourite);
+router.delete('/favourites/:id', authenticateJWT, rateLimitMiddleware, deleteFavourite);
+router.get('/applications', authenticateJWT, rateLimitMiddleware, getApplications);
 
 // ── Admin Portal (Requires ADMIN Role) ──
-router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
-router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
-router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
+router.get('/admin/analytics', authenticateJWT, requireAdmin, rateLimitMiddleware, getAnalytics);
+router.post('/admin/universities', authenticateJWT, requireAdmin, rateLimitMiddleware, createUniversity);
+router.put('/admin/universities/:id', authenticateJWT, requireAdmin, rateLimitMiddleware, updateUniversity);
 
 export default router;
