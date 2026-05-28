@@ -77,7 +77,7 @@ async function main() {
       description:
         'MIT is a world-class educational institution known for its rigorous academic programs, cutting-edge research, and innovation in science and technology.',
       featuredImage:
-        'https://images.unsplash.com/photo-1564981797816-1043664bf78d?q=80&w=1000',
+        'https://lh3.googleusercontent.com/gps-cs-s/APNQkAGGQ1x0soj2ILzUcQxAmLDnLCX-2suw-HID4jq0m55d-AwymIdgZ0DcILkLnBAYLt9Tn1tvXvo0eqVJlF3_5-fknLkbv6LCSmjo9ZMcaEUbCR0WSXiIN1Xull9RqTHMWHh4KsE=s680-w680-h510-rw',
       departments: [
         'School of Engineering',
         'School of Science',
@@ -103,7 +103,7 @@ async function main() {
       description:
         "Stanford University, located in the heart of Silicon Valley, is renowned for its academic strength, wealth, proximity to tech giants, and beautiful campus.",
       featuredImage:
-        'https://images.unsplash.com/photo-1589139011550-4b89eed962d6?q=80&w=1000',
+        'https://lh3.googleusercontent.com/gps-cs-s/APNQkAEK2YzU6w6DtlM98-S3dQvyhfB_NmNw1qLZNuDSdhWfpzq4GnFCu0dTB0kRZ5oqq7jOfJxxYSLcwYZZzAJ71yKDtopGs2XSOre08UO29l1e1Q8k_KyiMslSeqA3N6a2LqjTjbCyGZD5Q44=s680-w680-h510-rw',
       departments: [
         'School of Engineering',
         'School of Humanities and Sciences',
@@ -128,7 +128,7 @@ async function main() {
       description:
         'The University of Oxford is the oldest university in the English-speaking world. It is highly prestigious and consistently ranked among the top universities globally.',
       featuredImage:
-        'https://images.unsplash.com/photo-1548625361-155defe21947?q=80&w=1000',
+        'https://lh3.googleusercontent.com/gps-cs-s/APNQkAH955xibhDMJnoXPB5A2QpVtdLsAZSIFacFCVzZ9LTeFFHTTrihTenXbP2a3s9TGT4lF5WFOgRTIG5uRnJZd8zklULlmUxAsv1-3PUM422G2yUStrbs93Dw3trXHt0qL8siDubYzA=s680-w680-h510-rw',
       departments: [
         'Mathematical, Physical and Life Sciences',
         'Humanities',
@@ -154,7 +154,7 @@ async function main() {
       description:
         "A global leader in research and education, U of T offers an outstanding environment for students wishing to explore their intellectual potential in Canada's largest city.",
       featuredImage:
-        'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?q=80&w=1000',
+        'https://lh3.googleusercontent.com/gps-cs-s/APNQkAGSBlSpKnquwgtk-Lf1UryAiCNaZTtLehsUDZZx3I4iOy3d1LBbSdS-Oip2suCnRipMPeONggnB2vdVcGISxNs20FVXkj5qkADhDAn3b1NQh4i9rvEmaSIixe5JmLKEEwIk4iWI=s680-w680-h510-rw',
       departments: [
         'Faculty of Applied Science & Engineering',
         'Faculty of Arts & Science',
@@ -179,7 +179,7 @@ async function main() {
       description:
         'Ranked number one in Australia, the University of Melbourne is a leading international university with a tradition of excellence in research and teaching.',
       featuredImage:
-        'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=1000',
+        'https://lh3.googleusercontent.com/gps-cs-s/APNQkAFjxgSA3JUirLxc4rpjZhv5cx8t-NdRvLbxKh2V-cgudyh2TUJyLn9Q4RGHWeQopG9R23HutlqNoeFzbSsYHaVc_kb0-Ou-7AdcC65-y5eSM7DfnRhP3lNFI7X4JAJRZ9UqbM4x2w=s680-w680-h510-rw',
       departments: [
         'Faculty of Science',
         'Melbourne School of Engineering',
