@@ -39,11 +39,11 @@ router.put('/admin/universities/:id', authenticateJWT, requireAdmin, rateLimitMi
 router.get('/universities', cacheMiddleware(15*60*1000), getUniversities);
 router.get('/universities/featured', cacheMiddleware(15*60*1000), getFeaturedUniversitiesSlug);
 router.get('/universities/partners', cacheMiddleware(15*60*1000), getFeaturedUniversities);
-router.post('/universities/', authenticateJWT, requireAdmin, inValidateCacheMiddleware, createUniversity);
-router.put('/universities/:id', authenticateJWT, requireAdmin, inValidateCacheMiddleware, updateUniversity);
-router.delete('/universities/:id', authenticateJWT, requireAdmin, inValidateCacheMiddleware, deleteUniversity);
+router.post('/universities/', authenticateJWT, requireAdmin, rateLimitMiddleware, inValidateCacheMiddleware, createUniversity);
+router.put('/universities/:id', authenticateJWT, requireAdmin, rateLimitMiddleware, inValidateCacheMiddleware, updateUniversity);
+router.delete('/universities/:id', authenticateJWT, requireAdmin, rateLimitMiddleware, inValidateCacheMiddleware, deleteUniversity);
 
 // —— Cache clearing ——
-router.post('/admin/cache/clear', clearCache);
+router.post('/admin/cache/clear', authenticateJWT, requireAdmin, rateLimitMiddleware, clearCache);
 
 export default router;
