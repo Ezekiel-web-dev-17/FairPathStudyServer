@@ -31,6 +31,9 @@ model User {
   academicData             Json?         // Stores GPA, test scores (SAT/ACT/IELTS), current level
   preferences              Json?         // Stores budget, desired majors, campus setting
   profileCompletionPercent Int           @default(0)
+  isVerified               Boolean       @default(false)
+  verificationCode         String?       @unique
+  verificationCodeExpires  DateTime?
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
   savedMatches             SavedMatch[]
