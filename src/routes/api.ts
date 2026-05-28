@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, getMe, updateProfile } from '../controllers/authController.js';
+import { register, login, getMe, updateProfile, verifyEmail } from '../controllers/authController.js';
 import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
@@ -12,6 +12,7 @@ const router = Router();
 
 // ── Authentication & User Profiling ──
 router.post('/auth/register', authRateLimitMiddleware, register);
+router.get('/auth/verify-email', verifyEmail);
 router.post('/auth/login', authRateLimitMiddleware, login);
 router.get('/users/me', authenticateJWT, getMe);
 router.put('/users/me/profile', authenticateJWT, updateProfile);
