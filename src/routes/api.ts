@@ -14,7 +14,7 @@ const router = Router();
 router.post('/auth/register', authRateLimitMiddleware, register);
 router.post('/auth/login', authRateLimitMiddleware, login);
 router.get('/users/me', authenticateJWT, getMe);
-router.put('/users/me/profile', authenticateJWT, authRateLimitMiddleware, updateProfile);
+router.put('/users/me/profile', authenticateJWT, rateLimitMiddleware, updateProfile);
 
 // ── Universities ──
 router.get('/universities', rateLimitMiddleware, getUniversities);
