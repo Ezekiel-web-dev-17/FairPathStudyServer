@@ -14,12 +14,15 @@ const router = Router();
 router.post('/auth/register', authRateLimitMiddleware, register);
 router.post('/auth/login', authRateLimitMiddleware, login);
 router.get('/users/me', authenticateJWT, getMe);
-router.put('/users/me/profile', authenticateJWT, rateLimitMiddleware, updateProfile);
+router.put('/users/me/profile', authenticateJWT, updateProfile);
 
 // ── Universities ──
-router.get('/universities', getUniversities);
-router.get('/universities/featured', getFeaturedUniversities);
-router.get('/universities/:slug', getUniversityBySlug);
+router.get('/universities', cacheMiddleware(15 * 60 * 1000), getUniversities);
+router.get('/universities/featured', cacheMiddleware(15 * 60 * 1000), getFeaturedUniversitiesSlug);
+router.get('/universities/partners', cacheMiddleware(15 * 60 * 1000), getFeaturedUniversities);
+router.post('/universities/', authenticateJWT, requireAdmin, inValidateCacheMiddleware, createUniversity);
+router.put('/universities/:id', authenticateJWT, requireAdmin, inValidateCacheMiddleware, updateUniversity);
+router.delete('/universities/:id', authenticateJWT, requireAdmin, inValidateCacheMiddleware, deleteUniversity);
 
 // ── Scholarships ──
 router.get('/scholarships', getScholarships);
@@ -36,14 +39,8 @@ router.get('/applications', authenticateJWT, getApplications);
 router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
-router.get('/universities', cacheMiddleware(15*60*1000), getUniversities);
-router.get('/universities/featured', cacheMiddleware(15*60*1000), getFeaturedUniversitiesSlug);
-router.get('/universities/partners', cacheMiddleware(15*60*1000), getFeaturedUniversities);
-router.post('/universities/', authenticateJWT, requireAdmin, rateLimitMiddleware, inValidateCacheMiddleware, createUniversity);
-router.put('/universities/:id', authenticateJWT, requireAdmin, rateLimitMiddleware, inValidateCacheMiddleware, updateUniversity);
-router.delete('/universities/:id', authenticateJWT, requireAdmin, rateLimitMiddleware, inValidateCacheMiddleware, deleteUniversity);
 
 // —— Cache clearing ——
-router.post('/admin/cache/clear', authenticateJWT, requireAdmin, rateLimitMiddleware, clearCache);
+router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
 
 export default router;
