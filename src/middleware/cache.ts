@@ -18,7 +18,7 @@ export const cacheMiddleware = (durationInSeconds: number) => {
 
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
-        res.status(200).json(JSON.parse(cachedData));
+        res.status(200).json({ ...JSON.parse(cachedData), fromCache: true, cachedAt: new Date().toISOString() });
         return;
       }
 
@@ -37,4 +37,18 @@ export const cacheMiddleware = (durationInSeconds: number) => {
       next(); // fallback to DB query on cache failure
     }
   };
+};
+
+export const inValidateCacheMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const cacheKey = `cache:${req.originalUrl}*`;
+
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.del(cacheKey);
+    }
+    next();
+  } catch (err) {
+    logger.error(`Error invalidating cache for key ${cacheKey}: %o`, err);
+    next(); // fallback to DB query on cache failure
+  }
 };
