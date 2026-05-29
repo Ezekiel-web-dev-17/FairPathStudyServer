@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import type { StringValue } from 'ms';
 import { JWT_EXPIRES_IN, JWT_SECRET } from '../config/config.js';
 import crypto from 'node:crypto';
-import { sendVerificationEmail } from '../services/emailService.js';
+import { sendVerificationEmail, resend } from '../services/emailService.js';
 import logger from '../utils/logger.js';
 
 export const register = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
@@ -268,20 +268,35 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
 
 /**
  * GET /auth/unsubscribe
- * Opts out a user from receiving marketing/engagement emails by verifying a signed JWT token.
+ * Opts out a user from receiving marketing/engagement emails by verifying a signed JWT token and updating Resend.
  */
 export const unsubscribe = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token } = req.query;
+    const { token, email: rawEmail } = req.query;
+    let email = '';
 
-    if (!token || typeof token !== 'string') {
+    if (token && typeof token === 'string') {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET!, { algorithms: ['HS256'] }) as { email: string };
+        email = decoded.email;
+      } catch (err) {
+        res.status(400).json({
+          status: 'error',
+          message: 'Unsubscribe token is invalid or expired.',
+        });
+        return;
+      }
+    } else if (rawEmail && typeof rawEmail === 'string') {
+      email = rawEmail;
+    } else {
       res.status(400).json({
         status: 'error',
-        message: 'Invalid or missing unsubscribe token.',
+        message: 'Invalid or missing unsubscribe details.',
       });
       return;
     }
 
+<<<<<<< HEAD
     let decoded: { email: string };
     try {
       decoded = jwt.verify(token, JWT_SECRET!, { algorithms: ['HS256'] }) as { email: string };
@@ -294,36 +309,59 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
     }
 
     const email = decoded.email;
+=======
+>>>>>>> 02fc64d (feat(service): integrate Resend SDK and refactor email unsubscribe logic)
     if (!email) {
       res.status(400).json({
         status: 'error',
-        message: 'Invalid token payload.',
+        message: 'Email address not provided.',
       });
       return;
     }
 
+    // Call Resend to unsubscribe the contact from the Audience
+    const audienceId = process.env.RESEND_AUDIENCE_ID || 'default';
+    
+    try {
+      const { error: updateError } = await resend.contacts.update({
+        email,
+        unsubscribed: true,
+        audienceId,
+      });
+
+      if (updateError) {
+        logger.info(`Resend contact update failed (likely doesn't exist), creating unsubscribed contact for: ${email}`);
+        const { error: createError } = await resend.contacts.create({
+          email,
+          unsubscribed: true,
+          audienceId,
+        });
+
+        if (createError) {
+          logger.error(`Failed to create unsubscribed contact in Resend:`, createError);
+        }
+      }
+    } catch (resendErr) {
+      logger.error(`Error communicating with Resend during unsubscribe:`, resendErr);
+    }
+
+    // Still keep the database User model sync'd
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (!user) {
-      res.status(404).json({
-        status: 'error',
-        message: 'User not found.',
+    if (user) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          marketingOptIn: false,
+        },
       });
-      return;
     }
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        marketingOptIn: false,
-      },
-    });
 
     res.status(200).json({
       status: 'success',
-      message: 'You have been successfully unsubscribed from all marketing and onboarding follow-up emails.',
+      message: 'You have been successfully unsubscribed from all marketing and onboarding follow-up emails via Resend.',
     });
   } catch (error) {
     res.status(500).json({
