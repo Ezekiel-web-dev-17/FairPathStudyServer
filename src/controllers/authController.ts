@@ -1,10 +1,9 @@
-// TODO: Implement authentication controllers
 // - register: POST /auth/register  — Creates a new user, returns JWT + user
 // - login:    POST /auth/login     — Authenticates credentials, returns JWT + user
 // - getMe:    GET  /users/me       — Returns the authenticated user's profile
 // - updateProfile: PUT /users/me/profile — Updates academic data & preferences
 
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { AuthRequest, cookieOptions } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import bcrypt from 'bcryptjs';
@@ -13,6 +12,7 @@ import type { StringValue } from 'ms';
 import { JWT_EXPIRES_IN, JWT_SECRET } from '../config/config.js';
 import crypto from 'node:crypto';
 import { sendVerificationEmail } from '../services/emailService.js';
+import logger from '../utils/logger.js';
 
 export const register = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
@@ -250,6 +250,7 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
         isVerified: true,
         verificationCode: null,
         verificationCodeExpires: null,
+        profileCompletionPercent: 20, // Verification gives them an initial 20% profile score
       },
     });
 
@@ -261,6 +262,113 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
       status: 'error',
       message: 'Internal server error during email verification',
       error,
+    });
+  }
+};
+
+/**
+ * GET /auth/unsubscribe
+ * Opts out a user from receiving marketing/engagement emails by verifying a signed JWT token.
+ */
+export const unsubscribe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== 'string') {
+      res.status(400).json({
+        status: 'error',
+        message: 'Invalid or missing unsubscribe token.',
+      });
+      return;
+    }
+
+    let decoded: { email: string };
+    try {
+      decoded = jwt.verify(token, JWT_SECRET!) as { email: string };
+    } catch (err) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Unsubscribe token is invalid or expired.',
+      });
+      return;
+    }
+
+    const email = decoded.email;
+    if (!email) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Invalid token payload.',
+      });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User not found.',
+      });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        marketingOptIn: false,
+      },
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'You have been successfully unsubscribed from all marketing and onboarding follow-up emails.',
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error during unsubscribe.',
+      error,
+    });
+  }
+};
+
+/**
+ * POST /auth/logout
+ * Logs out a user by clearing cookies and destroying session state.
+ */
+export const logout = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // 1. Clear the JWT token cookie
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+
+    // 2. Destroy express-session if it exists
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          logger.warn('Session destruction warning during logout (session might not exist in store):', err);
+        }
+        res.status(200).json({
+          status: 'success',
+          message: 'Logout successful.',
+        });
+      });
+    } else {
+      res.status(200).json({
+        status: 'success',
+        message: 'Logout successful.',
+      });
+    }
+  } catch (error) {
+    logger.error('Error during logout:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error during logout.',
     });
   }
 };

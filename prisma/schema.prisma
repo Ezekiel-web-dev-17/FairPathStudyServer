@@ -34,6 +34,7 @@ model User {
   isVerified               Boolean       @default(false)
   verificationCode         String?       @unique
   verificationCodeExpires  DateTime?
+  marketingOptIn           Boolean       @default(true) @map("marketing_opt_in") @db.Boolean
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
   savedMatches             SavedMatch[]
@@ -101,4 +102,42 @@ model Application {
   documents    String[]          // Array of file URLs/references
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+}
+
+model UserOnboarding {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @map("user_id") @db.VarChar(255)
+  
+  // Step 1: Personal Profile
+  fullName        String?  @map("full_name") @db.VarChar(255)
+  dob             DateTime? @map("dob") @db.Date
+  currentCountry  String?  @map("current_country") @db.VarChar(100)
+  nationality     String?  @map("nationality") @db.VarChar(100)
+  visaHistory     Boolean?   @map("visa_history") @db.Boolean
+  
+  // Step 2: Academic & Budget
+  degreeLevel     String?  @map("degree_level") @db.VarChar(100)
+  intendedMajor   String?  @map("intended_major") @db.VarChar(100)
+  gpa             String?  @map("gpa") @db.VarChar(50)
+  annualBudget    Decimal?  @map("annual_budget") @db.Decimal(12, 2)
+  financialAid    String?  @map("financial_aid") @db.VarChar(100)
+  destinations    String[] @map("destinations")
+  
+  // Step 3: Testing & Professional
+  englishTest     String?  @map("english_test") @db.VarChar(50)
+  englishScore    String?  @map("english_score") @db.VarChar(50)
+  academicTest    String?  @map("academic_test") @db.VarChar(50)
+  academicScore   String?  @map("academic_score") @db.VarChar(50)
+  extracurriculars String[] @map("extracurriculars")
+  workExperience  String?  @map("work_experience") @db.VarChar(100)
+  industry        String?  @map("industry") @db.VarChar(100)
+  
+  // Step 4: Consent & Auditing
+  consent         Boolean  @default(false)
+  isCompleted     Boolean @default(false) @map("is_completed") @db.Boolean
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([userId])
+  @@map("user_preferences")
 }
