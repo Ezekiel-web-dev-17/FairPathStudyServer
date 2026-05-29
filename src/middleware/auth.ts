@@ -29,7 +29,7 @@ export const authenticateJWT = (
     const token = authHeader.split(' ')[1];
     const secret = JWT_SECRET!;
 
-    jwt.verify(token, secret, (err: Error | null, decoded: any) => {
+    jwt.verify(token, secret, { algorithms: ['HS256'] }, (err: Error | null, decoded: any) => {
       if (err) {
         res.status(403).json({ error: 'Forbidden: Invalid or expired token' });
         return;
@@ -53,7 +53,7 @@ export const authenticateJWTCookie = (
   if (token) {
     const secret = JWT_SECRET!;
 
-    jwt.verify(token, secret, (err: Error | null, decoded: any) => {
+    jwt.verify(token, secret, { algorithms: ['HS256'] }, (err: Error | null, decoded: any) => {
       if (err) {
         res.status(403).json({ error: 'Forbidden: Invalid or expired token' });
         return;
