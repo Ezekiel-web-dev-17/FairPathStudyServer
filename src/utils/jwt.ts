@@ -20,5 +20,5 @@ export const generateToken = (payload: JwtPayload): string => {
  * Verify and decode a JWT. Returns the decoded payload or throws on failure.
  */
 export const verifyToken = (token: string): JwtPayload => {
-  return jwt.verify(token, JWT_SECRET) as JwtPayload;
+  return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload;
 };

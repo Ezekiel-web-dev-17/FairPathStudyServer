@@ -284,7 +284,7 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
 
     let decoded: { email: string };
     try {
-      decoded = jwt.verify(token, JWT_SECRET!) as { email: string };
+      decoded = jwt.verify(token, JWT_SECRET!, { algorithms: ['HS256'] }) as { email: string };
     } catch (err) {
       res.status(400).json({
         status: 'error',
