@@ -2,6 +2,7 @@ import app from "./app.js";
 import { NODE_ENV, PORT } from "./config/config.js";
 import { connectDB } from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
+import { initScheduler } from "./config/scheduler.js";
 import logger from "./utils/logger.js";
 
 // ── Server Bootstrap ──
@@ -11,6 +12,9 @@ const startServer = async () => {
   // Connect to PostgreSQL and Redis
   await connectDB();
   await connectRedis();
+
+  // Initialize BullMQ background scheduler
+  await initScheduler();
 
   app.listen(PORT, () => {
     logger.info(
