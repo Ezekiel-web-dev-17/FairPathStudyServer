@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, getMe, updateProfile, verifyEmail } from '../controllers/authController.js';
+import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout } from '../controllers/authController.js';
 import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
@@ -7,13 +7,16 @@ import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, cle
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';
 import { cacheMiddleware, inValidateCacheMiddleware } from '../middleware/cache.js';
+import { getOnboarding, saveOnboarding } from '../controllers/onboardingController.js';
 
 const router = Router();
 
 // ── Authentication & User Profiling ──
 router.post('/auth/register', authRateLimitMiddleware, register);
 router.get('/auth/verify-email', verifyEmail);
+router.get('/auth/unsubscribe', unsubscribe);
 router.post('/auth/login', authRateLimitMiddleware, login);
+router.post('/auth/logout', logout);
 router.get('/users/me', authenticateJWT, getMe);
 router.put('/users/me/profile', authenticateJWT, updateProfile);
 
@@ -40,6 +43,10 @@ router.get('/applications', authenticateJWT, getApplications);
 router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
+
+// ── Onboarding ──
+router.get('/onboarding', authenticateJWT, getOnboarding);
+router.post('/onboarding', authenticateJWT, saveOnboarding);
 
 // —— Cache clearing ——
 router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
