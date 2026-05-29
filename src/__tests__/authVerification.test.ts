@@ -1,5 +1,7 @@
 import app from "../app.js";
 import request from "supertest";
+import jwt from "jsonwebtoken";
+import { JWT_SECRET } from "../config/config.js";
 import { prisma, pool } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 
@@ -110,6 +112,46 @@ describe("User Auth Verification Flow Tests", () => {
       expect(response.body).toHaveProperty("status", "success");
       expect(response.body.message).toContain("Login successful");
       expect(response.headers["set-cookie"]).toBeDefined();
+    });
+
+    it("should reject unsubscribe request with missing or invalid token", async () => {
+      const response = await request(app)
+        .get("/api/v1/auth/unsubscribe?token=invalid_unsub_token")
+        .expect(400);
+
+      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body.message).toContain("Unsubscribe token is invalid or expired");
+    });
+
+    it("should successfully opt-out the user from marketing emails with a valid unsubscribe token", async () => {
+      const unsubscribeToken = jwt.sign({ email: testEmail }, JWT_SECRET!);
+
+      const response = await request(app)
+        .get(`/api/v1/auth/unsubscribe?token=${unsubscribeToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body.message).toContain("successfully unsubscribed");
+
+      // Verify the state has changed in the database
+      const user = await prisma.user.findUnique({
+        where: { email: testEmail }
+      });
+      expect(user).not.toBeNull();
+      expect(user!.marketingOptIn).toBe(false); // Successfully opted out!
+    });
+
+    it("should successfully log out the user and clear cookie parameters", async () => {
+      const response = await request(app)
+        .post("/api/v1/auth/logout")
+        .expect(200);
+
+      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body.message).toContain("Logout successful");
+
+      const setCookieHeader = response.headers["set-cookie"];
+      expect(setCookieHeader).toBeDefined();
+      expect(setCookieHeader[0]).toContain("token=;");
     });
   });
 });
