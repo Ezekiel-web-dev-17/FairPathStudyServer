@@ -1,0 +1,9 @@
+-- AlterTable
+ALTER TABLE "user_preferences" ALTER COLUMN "full_name" DROP NOT NULL,
+ALTER COLUMN "dob" DROP NOT NULL,
+ALTER COLUMN "current_country" DROP NOT NULL,
+ALTER COLUMN "nationality" DROP NOT NULL,
+ALTER COLUMN "degree_level" DROP NOT NULL,
+ALTER COLUMN "gpa" DROP NOT NULL,
+ALTER COLUMN "annual_budget" DROP NOT NULL,
+ALTER COLUMN "financial_aid" DROP NOT NULL;
