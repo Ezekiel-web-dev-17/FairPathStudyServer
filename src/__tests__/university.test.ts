@@ -4,49 +4,140 @@ import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../config/config.js";
 import { prisma, pool } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
+import bcrypt from "bcryptjs";
 
-// Helper to generate JWT tokens for authentication testing
-const generateToken = (role: "STUDENT" | "ADMIN", email = "test@example.com", id = "test-id-123") => {
-  return jwt.sign({ id, email, role }, JWT_SECRET!);
-};
+// ─────────────────────────────────────────────────────────
+// Helper: generate JWT tokens for authentication testing
+// ─────────────────────────────────────────────────────────
+const generateToken = (role: "STUDENT" | "ADMIN", email: string, id: string) =>
+  jwt.sign({ id, email, role }, JWT_SECRET!);
 
 describe("Universities Integration Tests", () => {
   let adminToken: string;
   let studentToken: string;
   let testUniversityId: string;
 
+  // IDs of users created by this test suite (cleaned up in afterAll)
+  let adminUserId: string;
+  let studentUserId: string;
+
+  // IDs of universities seeded by this test suite
+  let oxfordId: string;
+  let partnerUniId: string;
+
+  // ─────────────────────────────────────────────────────
+  // beforeAll: seed all data this suite needs
+  // ─────────────────────────────────────────────────────
   beforeAll(async () => {
-    // Retrieve actual seeded user IDs to ensure database write actions like user profile updates succeed
-    const seededAdmin = await prisma.user.findUnique({
-      where: { email: "admin@fairpath.com" },
+    const hashedPassword = await bcrypt.hash("Test@1234", 10);
+
+    // Create admin test user
+    const admin = await prisma.user.upsert({
+      where: { email: "uni_test_admin@fairpath.com" },
+      update: {},
+      create: {
+        email: "uni_test_admin@fairpath.com",
+        firstName: "Uni Test",
+        lastName: "Admin",
+        passwordHash: hashedPassword,
+        role: "ADMIN",
+      },
     });
-    const seededStudent = await prisma.user.findUnique({
-      where: { email: "student@fairpath.com" },
+    adminUserId = admin.id;
+    adminToken = generateToken("ADMIN", admin.email, admin.id);
+
+    // Create student test user
+    const student = await prisma.user.upsert({
+      where: { email: "uni_test_student@fairpath.com" },
+      update: {},
+      create: {
+        email: "uni_test_student@fairpath.com",
+        firstName: "Uni Test",
+        lastName: "Student",
+        passwordHash: hashedPassword,
+        role: "STUDENT",
+      },
     });
+    studentUserId = student.id;
+    studentToken = generateToken("STUDENT", student.email, student.id);
 
-    const adminId = seededAdmin ? seededAdmin.id : "admin-uuid";
-    const studentId = seededStudent ? seededStudent.id : "student-uuid";
+    // Seed a known university for name-filter tests
+    const oxford = await prisma.university.upsert({
+      where: { slug: "university-of-oxford-test" },
+      update: {},
+      create: {
+        name: "University of Oxford",
+        slug: "university-of-oxford-test",
+        locationCity: "Oxford",
+        locationCountry: "United Kingdom",
+        rankingGlobal: 1,
+        rankingNational: 1,
+        tuitionMin: 15000,
+        tuitionMax: 30000,
+        setting: "URBAN",
+        type: "PUBLIC",
+        acceptanceRate: 17.5,
+        studentBodySize: 24000,
+        description: "One of the world's leading universities.",
+        featuredImage: "https://example.com/oxford.jpg",
+        departments: ["Law", "Medicine"],
+        isFeatured: false,
+        isPartner: false,
+      },
+    });
+    oxfordId = oxford.id;
 
-    adminToken = generateToken("ADMIN", "admin@fairpath.com", adminId);
-    studentToken = generateToken("STUDENT", "student@fairpath.com", studentId);
+    // Seed a partner/featured university for /featured and /partners tests
+    const partner = await prisma.university.upsert({
+      where: { slug: "fairpath-partner-uni-test" },
+      update: {},
+      create: {
+        name: "FairPath Partner University",
+        slug: "fairpath-partner-uni-test",
+        locationCity: "London",
+        locationCountry: "United Kingdom",
+        rankingGlobal: 50,
+        rankingNational: 5,
+        tuitionMin: 18000,
+        tuitionMax: 25000,
+        setting: "URBAN",
+        type: "PRIVATE",
+        acceptanceRate: 25.0,
+        studentBodySize: 10000,
+        description: "A proud FairPath partner.",
+        featuredImage: "https://example.com/partner.jpg",
+        departments: ["Business", "Engineering"],
+        isFeatured: true,
+        isPartner: true,
+      },
+    });
+    partnerUniId = partner.id;
 
-    // Self-healing: clear any leftover test university with test slug from previous aborted runs
-    await prisma.university.deleteMany({
-      where: { slug: "antigravity-uni" },
-    }).catch(() => {});
+    // Self-healing: clear any leftover test university from a previous aborted run
+    await prisma.university
+      .deleteMany({ where: { slug: "antigravity-uni" } })
+      .catch(() => {});
   });
 
+  // ─────────────────────────────────────────────────────
+  // afterAll: tear down everything we created
+  // ─────────────────────────────────────────────────────
   afterAll(async () => {
-    // Clean up test data that might have been created
+    // Clean up created university from POST test (if not already deleted)
     if (testUniversityId) {
-      try {
-        await prisma.university.delete({
-          where: { id: testUniversityId },
-        }).catch(() => {});
-      } catch (err) {}
+      await prisma.university
+        .delete({ where: { id: testUniversityId } })
+        .catch(() => {});
     }
+    // Clean up seed data created in beforeAll
+    await prisma.university
+      .deleteMany({ where: { id: { in: [oxfordId, partnerUniId].filter(Boolean) } } })
+      .catch(() => {});
+    await prisma.user
+      .deleteMany({ where: { id: { in: [adminUserId, studentUserId].filter(Boolean) } } })
+      .catch(() => {});
 
-    // Disconnect connection pools and Redis to allow Jest to exit cleanly
+    // Close connection pools
     await prisma.$disconnect();
     await pool.end();
     if (redisClient.isOpen) {
@@ -54,6 +145,9 @@ describe("Universities Integration Tests", () => {
     }
   });
 
+  // ─────────────────────────────────────────────────────
+  // GET /universities
+  // ─────────────────────────────────────────────────────
   describe("GET /api/v1/universities", () => {
     it("should retrieve a paginated list of universities", async () => {
       const response = await request(app)
@@ -72,30 +166,17 @@ describe("Universities Integration Tests", () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      // We seeded "University of Oxford" above, so at least 1 result is guaranteed
       expect(response.body.data.length).toBeGreaterThanOrEqual(1);
       expect(response.body.data[0].name).toContain("University of Oxford");
     });
   });
 
-  describe("GET /api/v1/universities/featured", () => {
-    it("should retrieve a list of featured universities", async () => {
-      const response = await request(app)
-        .get("/api/v1/universities/featured")
-        .expect(200);
-
-      expect(response.body).toHaveProperty("success", true);
-      expect(response.body).toHaveProperty("data");
-      expect(Array.isArray(response.body.data)).toBe(true);
-      
-      // All returned records must have isPartner = true
-      response.body.data.forEach((uni: any) => {
-        expect(uni.isPartner).toBe(true);
-      });
-    });
-  });
-
+  // ─────────────────────────────────────────────────────
+  // GET /universities/partners  (isPartner: true, isFeatured: true)
+  // ─────────────────────────────────────────────────────
   describe("GET /api/v1/universities/partners", () => {
-    it("should retrieve partner universities with restricted fields", async () => {
+    it("should retrieve partner universities with id and featuredImage only", async () => {
       const response = await request(app)
         .get("/api/v1/universities/partners")
         .expect(200);
@@ -103,18 +184,41 @@ describe("Universities Integration Tests", () => {
       expect(response.body).toHaveProperty("success", true);
       expect(response.body).toHaveProperty("data");
       expect(Array.isArray(response.body.data)).toBe(true);
+      // We seeded a partner + featured university above
+      expect(response.body.data.length).toBeGreaterThanOrEqual(1);
 
-      if (response.body.data.length > 0) {
-        const firstUni = response.body.data[0];
-        expect(firstUni).toHaveProperty("id");
-        expect(firstUni).toHaveProperty("featuredImage");
-        // Non-selected fields should not be returned
-        expect(firstUni.name).toBeUndefined();
-        expect(firstUni.slug).toBeUndefined();
-      }
+      const firstUni = response.body.data[0];
+      expect(firstUni).toHaveProperty("id");
+      expect(firstUni).toHaveProperty("featuredImage");
+      // getFeaturedUniversities uses select: { id, featuredImage } — name should NOT be present
+      expect(firstUni.name).toBeUndefined();
+      expect(firstUni.slug).toBeUndefined();
     });
   });
 
+  // ─────────────────────────────────────────────────────
+  // GET /universities/featured  (isPartner: true, all filters)
+  // ─────────────────────────────────────────────────────
+  describe("GET /api/v1/universities/featured", () => {
+    it("should retrieve a list of partner universities", async () => {
+      const response = await request(app)
+        .get("/api/v1/universities/featured")
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      expect(response.body).toHaveProperty("data");
+      expect(Array.isArray(response.body.data)).toBe(true);
+
+      // All returned records must have isPartner = true
+      response.body.data.forEach((uni: any) => {
+        expect(uni.isPartner).toBe(true);
+      });
+    });
+  });
+
+  // ─────────────────────────────────────────────────────
+  // POST /universities/
+  // ─────────────────────────────────────────────────────
   describe("POST /api/v1/universities", () => {
     const validPayload = {
       name: "Test University of Antigravity",
@@ -164,7 +268,7 @@ describe("Universities Integration Tests", () => {
 
       expect(response.body).toHaveProperty("message", "University created successfully");
 
-      // Retrieve from database to verify and capture ID
+      // Retrieve from DB to verify and capture ID for subsequent tests
       const createdUni = await prisma.university.findUnique({
         where: { slug: validPayload.slug },
       });
@@ -184,6 +288,9 @@ describe("Universities Integration Tests", () => {
     });
   });
 
+  // ─────────────────────────────────────────────────────
+  // PUT /universities/:id
+  // ─────────────────────────────────────────────────────
   describe("PUT /api/v1/universities/:id", () => {
     it("should reject update request with 401 if token is missing", async () => {
       await request(app)
@@ -216,6 +323,9 @@ describe("Universities Integration Tests", () => {
     });
   });
 
+  // ─────────────────────────────────────────────────────
+  // DELETE /universities/:id
+  // ─────────────────────────────────────────────────────
   describe("DELETE /api/v1/universities/:id", () => {
     it("should reject delete request with 401 if token is missing", async () => {
       await request(app)
@@ -242,8 +352,8 @@ describe("Universities Integration Tests", () => {
         where: { id: testUniversityId },
       });
       expect(deletedUni).toBeNull();
-      
-      // Clear variable so afterAll doesn't try to double-delete
+
+      // Clear so afterAll doesn't try to double-delete
       testUniversityId = "";
     });
   });

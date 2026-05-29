@@ -8,9 +8,10 @@ on:
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
-    
-    # Optional: Only run deployment if your CI tests pass first!
-    # needs: [build-and-test] 
+    # Only deploy after CI passes
+    needs: [security, test]
+    # Only run this job if the RAILWAY_TOKEN secret is actually configured
+    if: ${{ vars.RAILWAY_CONFIGURED == 'true' }}
 
     steps:
       - name: Checkout code
