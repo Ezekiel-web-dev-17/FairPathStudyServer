@@ -160,7 +160,7 @@ export const sendVerificationEmail = async (email: string, code: string): Promis
 
   logger.info(`[Email Service] Verification email initiated for ${email.replace(/^(\w{3}).*(@.+)$/, "$1****$2")}`);
   
-  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
     try {
       const { data, error } = await resend.emails.send({
         from: 'FairPath Study <onboarding@resend.dev>',
@@ -248,7 +248,7 @@ export const sendOnboardingReminderEmail = async (email: string, fullName: strin
 </html>`;
 
   logger.info(`[Email Service] Stage 1 reminder email compiled for ${email}`);
-  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
     try {
       const { data, error } = await resend.emails.send({
         from: 'FairPath Study <onboarding@resend.dev>',
@@ -334,7 +334,7 @@ export const sendOnboardingDeletionWarningEmail = async (email: string, fullName
 </html>`;
 
   logger.warn(`[Email Service] Stage 2 deletion warning email compiled for ${email}`);
-  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
     try {
       const { data, error } = await resend.emails.send({
         from: 'FairPath Study <onboarding@resend.dev>',
@@ -401,7 +401,7 @@ export const sendOnboardingGoodbyeEmail = async (email: string, fullName: string
 </html>`;
 
   logger.info(`[Email Service] Stage 3 goodbye email compiled for ${email}`);
-  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
     try {
       const { data, error } = await resend.emails.send({
         from: 'FairPath Study <onboarding@resend.dev>',

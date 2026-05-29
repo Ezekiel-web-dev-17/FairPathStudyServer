@@ -322,27 +322,31 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
     // Call Resend to unsubscribe the contact from the Audience
     const audienceId = process.env.RESEND_AUDIENCE_ID || 'default';
     
-    try {
-      const { error: updateError } = await resend.contacts.update({
-        email,
-        unsubscribed: true,
-        audienceId,
-      });
-
-      if (updateError) {
-        logger.info(`Resend contact update failed (likely doesn't exist), creating unsubscribed contact for: ${email}`);
-        const { error: createError } = await resend.contacts.create({
+    if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 're_placeholder_key' && process.env.NODE_ENV !== 'test') {
+      try {
+        const { error: updateError } = await resend.contacts.update({
           email,
           unsubscribed: true,
           audienceId,
         });
 
-        if (createError) {
-          logger.error(`Failed to create unsubscribed contact in Resend:`, createError);
+        if (updateError) {
+          logger.info(`Resend contact update failed (likely doesn't exist), creating unsubscribed contact for: ${email}`);
+          const { error: createError } = await resend.contacts.create({
+            email,
+            unsubscribed: true,
+            audienceId,
+          });
+
+          if (createError) {
+            logger.error(`Failed to create unsubscribed contact in Resend:`, createError);
+          }
         }
+      } catch (resendErr) {
+        logger.error(`Error communicating with Resend during unsubscribe:`, resendErr);
       }
-    } catch (resendErr) {
-      logger.error(`Error communicating with Resend during unsubscribe:`, resendErr);
+    } else {
+      logger.info(`[Unsubscribe Bypassed] Resend API call skipped in test/dev environment for: ${email}`);
     }
 
     // Still keep the database User model sync'd
