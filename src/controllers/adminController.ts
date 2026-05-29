@@ -1,4 +1,3 @@
-// TODO: Implement admin controllers
 // - getAnalytics:      GET  /admin/analytics        — KPI metrics (admin only)
 // - createUniversity:  POST /admin/universities      — Create university record
 // - updateUniversity:  PUT  /admin/universities/:id  — Update university record
@@ -64,15 +63,6 @@ export const createUniversity = async (req: AuthRequest, res: Response, _next: N
       isPartner,
     },
   });
-
-  if (req.user?.id) {
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: {
-        profileCompletionPercent: 100,
-      },
-    });
-  }
 
   res.status(201).json({ message: 'University created successfully' });
 };

@@ -205,17 +205,13 @@ export const getFeaturedUniversitiesSlug = async (req: Request, res: Response, _
 
 export const getFeaturedUniversities = async (_req: Request, res: Response, _next: NextFunction): Promise<void> => {
   try {
-    // get only the id and image of the featured universities in the most optimal way possible
+    // get only the id and image of the featured/partner universities
     const featured = await prisma.university.findMany({
       where: { isFeatured: true, isPartner: true },
-      select: { id: true, featuredImage: true }, // only get the id and image of the featured universities
+      select: { id: true, featuredImage: true },
     });
 
-    if (!featured.length) {
-      res.status(404).json({ error: "No Featuring Universities Found" });
-      return;
-    }
-
+    // Return empty array instead of 404 — the endpoint exists, it just has no data yet
     res.status(200).json({ success: true, data: featured });
   } catch (err) {
     res.status(500).json({ error: "Something went wrong." });
