@@ -30,4 +30,6 @@ export const {
     EMAIL_USER,
     EMAIL_PASS,
     SESSION_SECRET,
+    RESEND_API_KEY,
+    RESEND_AUDIENCE_ID,
 } = process.env;
