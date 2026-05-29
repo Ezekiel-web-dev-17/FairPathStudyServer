@@ -1,4 +1,3 @@
-// TODO: Implement university controllers
 // - getUniversities:         GET /universities          — Paginated + filtered list
 // - getFeaturedUniversities: GET /universities/featured  — Featured/partner universities
 // - getUniversityBySlug:     GET /universities/:slug     — Single university details
