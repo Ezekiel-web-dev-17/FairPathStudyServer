@@ -1,6 +1,9 @@
 import logger from '../utils/logger.js';
-import { PORT, NODE_ENV, BASE_URI, JWT_SECRET } from '../config/config.js';
+import { PORT, NODE_ENV, BASE_URI, JWT_SECRET, RESEND_API_KEY } from '../config/config.js';
 import jwt from 'jsonwebtoken';
+import { Resend } from 'resend';
+
+export const resend = new Resend(RESEND_API_KEY || 're_placeholder_key');
 
 /**
  * Generates a highly premium, modern, responsive HTML email template for email verification.
@@ -157,9 +160,23 @@ export const sendVerificationEmail = async (email: string, code: string): Promis
 
   logger.info(`[Email Service] Verification email initiated for ${email.replace(/^(\w{3}).*(@.+)$/, "$1****$2")}`);
   
-  if (isProduction) {
-    logger.info(`[Email Service] Production email template compiled successfully for ${email.replace(/^(\w{3}).*(@.+)$/, "$1****$2")}`);
-    // TODO(security): Integrate production SMTP client / Nodemailer / AWS SES / Resend API using htmlContent
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: 'FairPath Study <onboarding@resend.dev>',
+        to: [email],
+        subject: 'Verify Your Email - FairPath Study',
+        html: htmlContent,
+      });
+
+      if (error) {
+        logger.error(`Resend verification email failed for ${email}:`, error);
+      } else {
+        logger.info(`Resend verification email delivered: ${data?.id}`);
+      }
+    } catch (err) {
+      logger.error(`Resend verification email error for ${email}:`, err);
+    }
   } else {
     logger.info(`Verification URL: ${verificationLink}`);
   }
@@ -231,7 +248,24 @@ export const sendOnboardingReminderEmail = async (email: string, fullName: strin
 </html>`;
 
   logger.info(`[Email Service] Stage 1 reminder email compiled for ${email}`);
-  if (!isProduction) {
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: 'FairPath Study <onboarding@resend.dev>',
+        to: [email],
+        subject: 'Complete Your Profile - FairPath Study',
+        html: htmlContent,
+      });
+
+      if (error) {
+        logger.error(`Resend reminder email failed for ${email}:`, error);
+      } else {
+        logger.info(`Resend reminder email delivered: ${data?.id}`);
+      }
+    } catch (err) {
+      logger.error(`Resend reminder email error for ${email}:`, err);
+    }
+  } else {
     logger.info(`Reminder URL: ${onboardingLink}`);
     logger.info(`Unsubscribe URL: ${unsubscribeLink}`);
   }
@@ -300,7 +334,24 @@ export const sendOnboardingDeletionWarningEmail = async (email: string, fullName
 </html>`;
 
   logger.warn(`[Email Service] Stage 2 deletion warning email compiled for ${email}`);
-  if (!isProduction) {
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: 'FairPath Study <onboarding@resend.dev>',
+        to: [email],
+        subject: 'Account Pending Deactivation - FairPath Study',
+        html: htmlContent,
+      });
+
+      if (error) {
+        logger.error(`Resend deletion warning email failed for ${email}:`, error);
+      } else {
+        logger.info(`Resend deletion warning email delivered: ${data?.id}`);
+      }
+    } catch (err) {
+      logger.error(`Resend deletion warning email error for ${email}:`, err);
+    }
+  } else {
     logger.info(`Keep Active URL: ${onboardingLink}`);
     logger.info(`Unsubscribe URL: ${unsubscribeLink}`);
   }
@@ -350,6 +401,24 @@ export const sendOnboardingGoodbyeEmail = async (email: string, fullName: string
 </html>`;
 
   logger.info(`[Email Service] Stage 3 goodbye email compiled for ${email}`);
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key') {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: 'FairPath Study <onboarding@resend.dev>',
+        to: [email],
+        subject: 'Account Deactivated - FairPath Study',
+        html: htmlContent,
+      });
+
+      if (error) {
+        logger.error(`Resend goodbye email failed for ${email}:`, error);
+      } else {
+        logger.info(`Resend goodbye email delivered: ${data?.id}`);
+      }
+    } catch (err) {
+      logger.error(`Resend goodbye email error for ${email}:`, err);
+    }
+  }
 };
 
 
