@@ -9,14 +9,13 @@ import { redisClient } from "../config/redis.js";
 describe("User Password Recovery and Reset Flow Tests", () => {
   const testEmail = "reset_test@fairpath.com";
   const testPassword = "securePassword123!";
-  const testFullName = "Reset Test User";
 
   beforeAll(async () => {
-    // Clean up any remnants
+    // Clean up any remnants from prior runs
     await prisma.user.deleteMany({
       where: { email: testEmail },
     }).catch(() => {});
-  });
+  }, 30000);
 
   afterAll(async () => {
     // Final clean up
@@ -30,7 +29,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
     if (redisClient.isOpen) {
       await redisClient.quit();
     }
-  });
+  }, 30000);
 
   describe("Forgot Password Flow", () => {
     it("should return a generic successful response regardless of whether the email exists", async () => {
@@ -43,8 +42,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
       expect(responseNonExistent.body).toHaveProperty("status", "success");
       expect(responseNonExistent.body.message).toContain("If that email exists in our system");
 
-      // 2. Real email (unverified first)
-      // Create user
+      // 2. Real email (unverified) — should still return the same generic response
       const salt = await bcrypt.genSalt(12);
       const passwordHash = await bcrypt.hash(testPassword, salt);
       await prisma.user.create({
@@ -80,12 +78,24 @@ describe("User Password Recovery and Reset Flow Tests", () => {
 
   describe("Reset Password Flow", () => {
     beforeAll(async () => {
-      // Mark user as verified to allow proper testing
-      await prisma.user.update({
+      // Upsert a verified user so this describe block is self-sufficient
+      // even if the "Forgot Password Flow" describe did not run first.
+      const salt = await bcrypt.genSalt(12);
+      const passwordHash = await bcrypt.hash(testPassword, salt);
+
+      await prisma.user.upsert({
         where: { email: testEmail },
-        data: { isVerified: true },
+        update: { isVerified: true, passwordHash },
+        create: {
+          email: testEmail,
+          passwordHash,
+          firstName: "Reset",
+          lastName: "User",
+          isVerified: true,
+          role: "STUDENT",
+        },
       });
-    });
+    }, 30000);
 
     it("should successfully reset password with a valid token", async () => {
       const user = await prisma.user.findUnique({
@@ -101,10 +111,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
 
       const response = await request(app)
         .post("/api/v1/auth/reset-password")
-        .send({
-          token,
-          newPassword,
-        })
+        .send({ token, newPassword })
         .expect(200);
 
       expect(response.body).toHaveProperty("status", "success");
@@ -113,10 +120,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
       // Verify we can now log in with the new password
       const loginResponse = await request(app)
         .post("/api/v1/auth/login")
-        .send({
-          email: testEmail,
-          password: newPassword,
-        })
+        .send({ email: testEmail, password: newPassword })
         .expect(200);
 
       expect(loginResponse.body).toHaveProperty("status", "success");
@@ -135,20 +139,14 @@ describe("User Password Recovery and Reset Flow Tests", () => {
       // First reset (should succeed)
       const firstReset = await request(app)
         .post("/api/v1/auth/reset-password")
-        .send({
-          token,
-          newPassword: "anotherSuperSecurePassword987!",
-        })
+        .send({ token, newPassword: "anotherSuperSecurePassword987!" })
         .expect(200);
       expect(firstReset.body.status).toBe("success");
 
       // Second reset using the same token (must fail because passwordHash has changed)
       const secondReset = await request(app)
         .post("/api/v1/auth/reset-password")
-        .send({
-          token,
-          newPassword: "yetAnotherPassword12345!",
-        })
+        .send({ token, newPassword: "yetAnotherPassword12345!" })
         .expect(400);
 
       expect(secondReset.body).toHaveProperty("status", "error");
@@ -164,10 +162,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
 
       const response = await request(app)
         .post("/api/v1/auth/reset-password")
-        .send({
-          token,
-          newPassword: "short",
-        })
+        .send({ token, newPassword: "short" })
         .expect(400);
 
       expect(response.body).toHaveProperty("status", "error");
@@ -180,7 +175,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
       });
       
       const secret = JWT_SECRET! + user!.passwordHash;
-      // Generate a token that expired 10 minutes ago (using negative expiration relative to now)
+      // Simulate an expired token: iat 20 minutes in the past, expiresIn 15m → already expired
       const token = jwt.sign(
         { id: user!.id, email: user!.email, iat: Math.floor(Date.now() / 1000) - 1200 }, 
         secret, 
@@ -189,10 +184,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
 
       const response = await request(app)
         .post("/api/v1/auth/reset-password")
-        .send({
-          token,
-          newPassword: "validNewPassword123!",
-        })
+        .send({ token, newPassword: "validNewPassword123!" })
         .expect(400);
 
       expect(response.body).toHaveProperty("status", "error");
