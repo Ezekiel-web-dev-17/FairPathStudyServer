@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 import type { StringValue } from 'ms';
 import { JWT_EXPIRES_IN, JWT_SECRET } from '../config/config.js';
 import crypto from 'node:crypto';
-import { sendVerificationEmail, resend } from '../services/emailService.js';
+import { sendVerificationEmail, resend, sendResetPasswordEmail } from '../services/emailService.js';
 import logger from '../utils/logger.js';
 
 export const register = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
@@ -399,3 +399,164 @@ export const logout = async (req: AuthRequest, res: Response): Promise<void> => 
     });
   }
 };
+
+/**
+ * POST /auth/forgot-password
+ * Triggers a password reset email for verified accounts using stateless dynamic JWTs.
+ */
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== 'string') {
+      res.status(400).json({
+        status: 'error',
+        message: 'A valid email address is required',
+      });
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Invalid email address format',
+      });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Enforce generic response regardless of whether user exists to prevent email enumeration
+    const genericSuccessResponse = {
+      status: 'success',
+      message: 'If that email exists in our system, we have sent a reset password link.',
+    };
+
+    if (!user || !user.isVerified) {
+      logger.info(`[Forgot Password] Bypassed reset email for non-existent/unverified address: ${email}`);
+      res.status(200).json(genericSuccessResponse);
+      return;
+    }
+
+    // Dynamic stateless token: secret incorporates the current passwordHash.
+    // If the password is changed, the secret changes, invalidating this token.
+    const secret = JWT_SECRET! + user.passwordHash;
+    const token = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '15m' });
+
+    await sendResetPasswordEmail(email, token);
+
+    res.status(200).json(genericSuccessResponse);
+  } catch (error) {
+    logger.error('Error during forgot password request:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error during forgot password processing.',
+    });
+  }
+};
+
+/**
+ * POST /auth/reset-password
+ * Resets a user's password using a verified dynamic token and clears current sessions.
+ */
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || typeof token !== 'string' || !newPassword || typeof newPassword !== 'string') {
+      res.status(400).json({
+        status: 'error',
+        message: 'Token and new password are required',
+      });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Password must be at least 8 characters long',
+      });
+      return;
+    }
+
+    // Statelessly identify target user via decode first
+    const decoded = jwt.decode(token) as { email?: string } | null;
+    if (!decoded || !decoded.email) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Invalid or malformed reset token payload',
+      });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: decoded.email },
+    });
+
+    if (!user) {
+      res.status(400).json({
+        status: 'error',
+        message: 'User associated with this token does not exist',
+      });
+      return;
+    }
+
+    // Securely verify token using the dynamic secret + HS256 constraints
+    try {
+      const secret = JWT_SECRET! + user.passwordHash;
+      jwt.verify(token, secret, { algorithms: ['HS256'] });
+    } catch (err) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Password reset link is invalid or has expired',
+      });
+      return;
+    }
+
+    // Update credentials
+    const salt = await bcrypt.genSalt(12);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    logger.info(`[Reset Password] Successfully updated password for user: ${user.email}`);
+
+    // Clear authentication cookie to force re-login
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+
+    // Destroy active session
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          logger.warn('Session destruction warning during password reset:', err);
+        }
+        res.status(200).json({
+          status: 'success',
+          message: 'Password has been reset successfully. Please log in with your new password.',
+        });
+      });
+    } else {
+      res.status(200).json({
+        status: 'success',
+        message: 'Password has been reset successfully. Please log in with your new password.',
+      });
+    }
+  } catch (error) {
+    logger.error('Error during password reset:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error during password reset processing.',
+    });
+  }
+};
+
