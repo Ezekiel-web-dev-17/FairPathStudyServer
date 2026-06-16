@@ -1,5 +1,5 @@
 import logger from '../utils/logger.js';
-import { PORT, NODE_ENV, BASE_URI, JWT_SECRET, RESEND_API_KEY } from '../config/config.js';
+import { PORT, NODE_ENV, BASE_URI, FRONTEND_URL, JWT_SECRET, RESEND_API_KEY } from '../config/config.js';
 import jwt from 'jsonwebtoken';
 import { Resend } from 'resend';
 
@@ -286,10 +286,9 @@ export const generateResetPasswordHtml = (resetLink: string): string => {
  * In production, it uses the premium HTML template and logs delivery setup.
  */
 export const sendResetPasswordEmail = async (email: string, token: string): Promise<void> => {
-  const port = PORT || 5000;
   const isProduction = NODE_ENV === 'production';
-  const baseUrl = isProduction ? BASE_URI : `http://localhost:${port}`;
-  const resetLink = `${baseUrl}/api/v1/auth/reset-password?token=${token}`;
+  const frontendUrl = FRONTEND_URL || (isProduction ? BASE_URI : 'http://localhost:5173');
+  const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
   const htmlContent = generateResetPasswordHtml(resetLink);
 
@@ -314,6 +313,146 @@ export const sendResetPasswordEmail = async (email: string, token: string): Prom
     }
   } else {
     logger.info(`Reset Password URL: ${resetLink}`);
+  }
+};
+
+/**
+ * Generates a highly premium, modern, responsive HTML email template for password reset success.
+ */
+export const generateResetSuccessHtml = (): string => {
+  const currentYear = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Reset Successful - FairPath Study</title>
+  <style>
+    body {
+      font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f4f5f7;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrapper {
+      width: 100%;
+      table-layout: fixed;
+      background-color: #f4f5f7;
+      padding: 40px 0;
+    }
+    .container {
+      max-width: 580px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    }
+    .header {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      color: #ffffff;
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .content {
+      padding: 40px 30px;
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    .content p {
+      font-size: 16px;
+      margin: 0 0 20px 0;
+    }
+    .warning-box {
+      background-color: #fef3c7;
+      border-left: 4px solid #d97706;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 25px;
+    }
+    .warning-box p {
+      margin: 0;
+      color: #92400e;
+      font-size: 14px;
+    }
+    .footer {
+      background-color: #fafafa;
+      padding: 24px 20px;
+      text-align: center;
+      border-top: 1px solid #f3f4f6;
+    }
+    .footer p {
+      margin: 0 0 8px 0;
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .footer a {
+      color: #10b981;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <div class="header">
+        <h1>Password Reset Successful</h1>
+      </div>
+      <div class="content">
+        <p>Hello,</p>
+        <p>This email is to confirm that the password for your FairPath Study account has been successfully reset.</p>
+        <p>If you did not make this change, please contact our support team immediately to secure your account.</p>
+        
+        <div class="warning-box">
+          <p><strong>Security Note:</strong> Your active sessions on other devices have been logged out for your security.</p>
+        </div>
+
+        <p>Best regards,<br><strong>The FairPath Study Team</strong></p>
+      </div>
+      <div class="footer">
+        <p>&copy; ${currentYear} FairPath Study. All rights reserved.</p>
+        <p>Need support? Contact us at <a href="mailto:support@fairpath.com">support@fairpath.com</a></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
+/**
+ * Sends a password reset success confirmation email to the user.
+ */
+export const sendPasswordResetSuccessEmail = async (email: string): Promise<void> => {
+  const htmlContent = generateResetSuccessHtml();
+
+  logger.info(`[Email Service] Password reset success email initiated for ${email.replace(/^(\w{3}).*(@.+)$/, "$1****$2")}`);
+  
+  if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: 'FairPath Study <onboarding@resend.dev>',
+        to: [email],
+        subject: 'Password Reset Successful - FairPath Study',
+        html: htmlContent,
+      });
+
+      if (error) {
+        logger.error(`Resend password reset success email failed for ${email}:`, error);
+      } else {
+        logger.info(`Resend password reset success email delivered: ${data?.id}`);
+      }
+    } catch (err) {
+      logger.error(`Resend password reset success email error for ${email}:`, err);
+    }
+  } else {
+    logger.info(`Password reset success email sent to: ${email}`);
   }
 };
 

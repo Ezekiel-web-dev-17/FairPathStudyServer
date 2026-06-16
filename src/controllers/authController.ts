@@ -4,15 +4,44 @@
 // - updateProfile: PUT /users/me/profile — Updates academic data & preferences
 
 import { Request, Response, NextFunction } from 'express';
-import { AuthRequest, cookieOptions } from '../middleware/auth.js';
+import { AuthRequest, cookieOptions, refreshCookieOptions } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import type { StringValue } from 'ms';
-import { JWT_EXPIRES_IN, JWT_SECRET } from '../config/config.js';
+import { JWT_SECRET, NODE_ENV, RESEND_API_KEY, RESEND_AUDIENCE_ID } from '../config/config.js';
 import crypto from 'node:crypto';
-import { sendVerificationEmail, resend, sendResetPasswordEmail } from '../services/emailService.js';
+import { sendVerificationEmail, resend, sendResetPasswordEmail, sendPasswordResetSuccessEmail } from '../services/emailService.js';
 import logger from '../utils/logger.js';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyAccessToken,
+  verifyRefreshToken,
+  blacklistToken,
+  isTokenBlacklisted,
+  DecodedToken
+} from '../services/tokenService.js';
+import { encryptResetToken, decryptResetToken } from '../utils/crypto.js';
+import { webSocketService } from '../services/websocketService.js';
+
+export const validatePassword = (password: string): string | null => {
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'Password must contain at least one uppercase letter';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain at least one lowercase letter';
+  }
+  if (!/\d/.test(password)) {
+    return 'Password must contain at least one number';
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return 'Password must contain at least one special character';
+  }
+  return null;
+};
 
 export const register = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
@@ -29,6 +58,15 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
         message: 'Full name, email and password are required',
       });
 
+      return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      res.status(400).json({
+        status: 'error',
+        message: passwordError,
+      });
       return;
     }
 
@@ -101,6 +139,21 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
 
     await sendVerificationEmail(email, verificationCode);
 
+    const audienceId = RESEND_AUDIENCE_ID || 'default';
+    if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
+      try {
+        await resend.contacts.create({
+          email,
+          unsubscribed: false,
+          audienceId,
+          firstName,
+          lastName,
+        });
+      } catch (err) {
+        logger.error(`Error creating contact in Resend during registration for ${email}:`, err);
+      }
+    }
+
     res.status(201).json({
       status: 'success',
       message: 'User registered successfully. Please check your email to verify your account.',
@@ -160,18 +213,12 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
       return;
     }
 
-    if (!JWT_SECRET || !JWT_EXPIRES_IN){
-      res.status(500).json({
-        status: 'error',
-        message: 'Server configuration error',
-      });
-
-      return;
-    }
-
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as StringValue });
+    const payload = { id: user.id, email: user.email, role: user.role };
+    const token = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
 
     res.cookie('token', token, cookieOptions);
+    res.cookie('refreshToken', newRefreshToken, refreshCookieOptions);
     
     res.status(200).json({
       status: 'success',
@@ -180,6 +227,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
 
     return;
   } catch (error) {
+    logger.error('Error during login:', error);
     res.status(500).json({
       status: 'error',
       message: 'Internal server error',
@@ -188,9 +236,45 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
   }
 };
 
-export const getMe = async (_req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
+export const getMe = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
-    res.status(501).json({ error: 'Not implemented' });
+    if (!req.user) {
+      res.status(401).json({
+        status: 'error',
+        message: 'Not authenticated',
+      });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isVerified: true,
+        countryOfOrigin: true,
+        targetDestinations: true,
+        academicData: true,
+        preferences: true,
+        profileCompletionPercent: true,
+      }
+    });
+
+    if (!user) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: user,
+    });
   } catch (error) {
     res.status(500).json({
       status: 'error',
@@ -320,9 +404,9 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
     }
 
     // Call Resend to unsubscribe the contact from the Audience
-    const audienceId = process.env.RESEND_AUDIENCE_ID || 'default';
+    const audienceId = RESEND_AUDIENCE_ID || 'default';
     
-    if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 're_placeholder_key' && process.env.NODE_ENV !== 'test') {
+    if (RESEND_API_KEY && RESEND_API_KEY !== 're_placeholder_key' && NODE_ENV !== 'test') {
       try {
         const { error: updateError } = await resend.contacts.update({
           email,
@@ -331,16 +415,7 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
         });
 
         if (updateError) {
-          logger.info(`Resend contact update failed (likely doesn't exist), creating unsubscribed contact for: ${email}`);
-          const { error: createError } = await resend.contacts.create({
-            email,
-            unsubscribed: true,
-            audienceId,
-          });
-
-          if (createError) {
-            logger.error(`Failed to create unsubscribed contact in Resend:`, createError);
-          }
+          logger.error(`Failed to update unsubscribe status for contact in Resend:`, updateError);
         }
       } catch (resendErr) {
         logger.error(`Error communicating with Resend during unsubscribe:`, resendErr);
@@ -382,14 +457,68 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
  */
 export const logout = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // 1. Clear the JWT token cookie
+    // 1. Blacklist tokens if present
+    let tokenJti = req.tokenJti;
+    let tokenExp = req.tokenExp;
+    let userId = req.user?.id;
+
+    if (!tokenJti) {
+      const authHeader = req.headers.authorization;
+      let token = "";
+      if (authHeader) {
+        token = authHeader.split(' ')[1];
+      } else if (req.cookies && req.cookies.token) {
+        token = req.cookies.token;
+      }
+
+      if (token) {
+        try {
+          const decoded = verifyAccessToken(token);
+          if (decoded && decoded.jti) {
+            tokenJti = decoded.jti;
+            tokenExp = decoded.exp;
+            userId = decoded.id;
+          }
+        } catch (err) {
+          // ignore invalid/expired access token
+        }
+      }
+    }
+
+    if (tokenJti && tokenExp) {
+      await blacklistToken(tokenJti, tokenExp);
+    }
+
+    const oldRefreshToken = req.cookies.refreshToken;
+    if (oldRefreshToken) {
+      try {
+        const decodedRefresh = verifyRefreshToken(oldRefreshToken);
+        if (decodedRefresh && decodedRefresh.jti) {
+          await blacklistToken(decodedRefresh.jti, decodedRefresh.exp);
+        }
+      } catch (err) {
+        // ignore invalid/expired refresh token
+      }
+    }
+
+    const finalUserId = req.user?.id || userId || req.session?.user?.id;
+    if (finalUserId) {
+      webSocketService.terminateUserConnections(finalUserId, 'User logged out');
+    }
+
+    // 2. Clear both cookie tokens
     res.clearCookie('token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
     });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
 
-    // 2. Destroy express-session if it exists
+    // 3. Destroy express-session if it exists
     if (req.session) {
       req.session.destroy((err) => {
         if (err) {
@@ -456,10 +585,14 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Dynamic stateless token: secret incorporates the current passwordHash.
-    // If the password is changed, the secret changes, invalidating this token.
-    const secret = JWT_SECRET! + user.passwordHash;
-    const token = jwt.sign({ id: user.id, email: user.email }, secret, { expiresIn: '15m' });
+    // Crypto-encrypted stateless token containing the password hash for rotation check
+    const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60; // 15 minutes
+    const token = encryptResetToken({
+      id: user.id,
+      email: user.email,
+      passwordHash: user.passwordHash,
+      expiresAt,
+    });
 
     await sendResetPasswordEmail(email, token);
 
@@ -489,20 +622,31 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    if (newPassword.length < 8) {
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
       res.status(400).json({
         status: 'error',
-        message: 'Password must be at least 8 characters long',
+        message: passwordError,
       });
       return;
     }
 
-    // Statelessly identify target user via decode first
-    const decoded = jwt.decode(token) as { email?: string } | null;
-    if (!decoded || !decoded.email) {
+    // Securely verify token using crypto-decryption
+    const decoded = decryptResetToken(token);
+    if (!decoded || !decoded.email || !decoded.passwordHash || !decoded.expiresAt) {
       res.status(400).json({
         status: 'error',
         message: 'Invalid or malformed reset token payload',
+      });
+      return;
+    }
+
+    // Check expiration
+    const now = Math.floor(Date.now() / 1000);
+    if (decoded.expiresAt < now) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Password reset link is invalid or has expired',
       });
       return;
     }
@@ -519,14 +663,11 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Securely verify token using the dynamic secret + HS256 constraints
-    try {
-      const secret = JWT_SECRET! + user.passwordHash;
-      jwt.verify(token, secret, { algorithms: ['HS256'] });
-    } catch (err) {
+    // Verify password hash has not changed (ensures single-use reset link)
+    if (user.passwordHash !== decoded.passwordHash) {
       res.status(400).json({
         status: 'error',
-        message: 'Password reset link is invalid or has expired',
+        message: 'Password reset link is invalid or has already been used',
       });
       return;
     }
@@ -542,8 +683,39 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 
     logger.info(`[Reset Password] Successfully updated password for user: ${user.email}`);
 
-    // Clear authentication cookie to force re-login
+    // Send successful reset email
+    await sendPasswordResetSuccessEmail(user.email);
+
+    // Terminate any active websocket sessions for this user
+    webSocketService.terminateUserConnections(user.id, 'Password reset');
+
+    // Blacklist active tokens if cookies are set
+    const currentAccessToken = req.cookies.token;
+    if (currentAccessToken) {
+      try {
+        const decodedAccess = verifyAccessToken(currentAccessToken);
+        if (decodedAccess && decodedAccess.jti) {
+          await blacklistToken(decodedAccess.jti, decodedAccess.exp);
+        }
+      } catch (e) {}
+    }
+    const currentRefreshToken = req.cookies.refreshToken;
+    if (currentRefreshToken) {
+      try {
+        const decodedRefresh = verifyRefreshToken(currentRefreshToken);
+        if (decodedRefresh && decodedRefresh.jti) {
+          await blacklistToken(decodedRefresh.jti, decodedRefresh.exp);
+        }
+      } catch (e) {}
+    }
+
+    // Clear cookies to force re-login
     res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+    res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -571,6 +743,81 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({
       status: 'error',
       message: 'Internal server error during password reset processing.',
+    });
+  }
+};
+
+/**
+ * POST /auth/refresh-token
+ * Rotates the refresh token: validates the old refresh token, blacklists it, and issues a new pair.
+ */
+export const refreshToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const oldRefreshToken = req.cookies.refreshToken;
+
+    if (!oldRefreshToken) {
+      res.status(401).json({
+        status: 'error',
+        message: 'Refresh token cookie is missing',
+      });
+      return;
+    }
+
+    let decoded: DecodedToken;
+    try {
+      decoded = verifyRefreshToken(oldRefreshToken);
+    } catch (err) {
+      res.status(403).json({
+        status: 'error',
+        message: 'Invalid or expired refresh token',
+      });
+      return;
+    }
+
+    // Check if the old refresh token is blacklisted in Redis
+    const isBlacklisted = await isTokenBlacklisted(decoded.jti);
+    if (isBlacklisted) {
+      res.status(403).json({
+        status: 'error',
+        message: 'Refresh token has been blacklisted',
+      });
+      return;
+    }
+
+    // Blacklist the old refresh token (Token Rotation)
+    await blacklistToken(decoded.jti, decoded.exp);
+
+    // Fetch the user to ensure they still exist and are active
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+    });
+
+    if (!user || !user.isVerified) {
+      res.status(403).json({
+        status: 'error',
+        message: 'User no longer exists or is unverified',
+      });
+      return;
+    }
+
+    // Generate a new token pair
+    const payload = { id: user.id, email: user.email, role: user.role };
+    const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
+
+    // Set cookies
+    res.cookie('token', newAccessToken, cookieOptions);
+    res.cookie('refreshToken', newRefreshToken, refreshCookieOptions);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Tokens refreshed successfully.',
+    });
+  } catch (error) {
+    logger.error('Error during token refresh:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error during token refresh.',
     });
   }
 };
