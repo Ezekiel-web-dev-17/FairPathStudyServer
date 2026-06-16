@@ -171,15 +171,14 @@ describe("User Onboarding Integration Tests", () => {
 
   describe("POST /api/v1/onboarding (Validation & Submission)", () => {
     it("should reject final submission if any of the required steps/fields are missing", async () => {
-      // Sending a submission request, but missing key academic details and consent
+      // Sending a submission request, but missing a required field (visaHistory)
       const incompleteSubmissionPayload = {
         isSubmit: true,
         fullName: "Ezekiel Test User",
         dob: "2000-01-01",
         currentCountry: "Nigeria",
         nationality: "Nigerian",
-        visaHistory: false,
-        // Missing degreeLevel, gpa, annualBudget, financialAid, consent
+        // Missing visaHistory — a required field
       };
 
       const response = await request(app)

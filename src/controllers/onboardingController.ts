@@ -124,11 +124,7 @@ export const saveOnboarding = async (req: AuthRequest, res: Response): Promise<v
         'dob',
         'currentCountry',
         'nationality',
-        'degreeLevel',
-        'gpa',
-        'annualBudget',
-        'financialAid',
-        'consent',
+        'visaHistory',
       ];
 
       const missingFields = requiredFields.filter((field) => {
@@ -143,7 +139,11 @@ export const saveOnboarding = async (req: AuthRequest, res: Response): Promise<v
         });
         return;
       }
+    }
 
+    let userOnboarding;
+
+    if (isSubmit) {
       if (!dataToSave.consent) {
         res.status(400).json({
           success: false,
@@ -151,11 +151,7 @@ export const saveOnboarding = async (req: AuthRequest, res: Response): Promise<v
         });
         return;
       }
-    }
 
-    let userOnboarding;
-
-    if (isSubmit) {
       const nameParts = (dataToSave.fullName || '').trim().split(/\s+/);
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ');
