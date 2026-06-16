@@ -127,6 +127,23 @@ class WebSocketService {
   }
 
   /**
+   * Proactively terminate all active WebSocket connections for a user.
+   */
+  public terminateUserConnections(userId: string, reason = 'Authentication revoked'): void {
+    const userSockets = this.connections.get(userId);
+    if (userSockets) {
+      for (const socket of userSockets) {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close(1008, reason);
+          socket.terminate();
+        }
+      }
+      this.connections.delete(userId);
+      logger.info(`Terminated all active WebSocket connections for user ${userId}. Reason: ${reason}`);
+    }
+  }
+
+  /**
    * Reset the connections map (useful for test isolation).
    */
   public clearAllConnections(): void {

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout, forgotPassword, resetPassword } from '../controllers/authController.js';
+import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout, forgotPassword, resetPassword, refreshToken } from '../controllers/authController.js';
 import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
@@ -19,6 +19,7 @@ router.post('/auth/login', authRateLimitMiddleware, login);
 router.post('/auth/logout', logout);
 router.post('/auth/forgot-password', authRateLimitMiddleware, forgotPassword);
 router.post('/auth/reset-password', authRateLimitMiddleware, resetPassword);
+router.post('/auth/refresh-token', refreshToken);
 router.get('/users/me', authenticateJWT, getMe);
 router.put('/users/me/profile', authenticateJWT, updateProfile);
 

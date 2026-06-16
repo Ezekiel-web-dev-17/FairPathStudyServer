@@ -6,6 +6,7 @@ import { JWT_SECRET, SESSION_SECRET } from './config.js';
 import { redisClient } from './redis.js';
 import { webSocketService, AuthenticatedWebSocket } from '../services/websocketService.js';
 import logger from '../utils/logger.js';
+import { isTokenBlacklisted } from '../services/tokenService.js';
 
 const MAX_CONNECTIONS_PER_USER = 5;
 
@@ -50,6 +51,13 @@ const authenticateUpgrade = async (
       // Enforce HS256 algorithm as per safety instructions
       const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as any;
       if (decoded && decoded.id && decoded.email && decoded.role) {
+        if (decoded.jti) {
+          const blacklisted = await isTokenBlacklisted(decoded.jti);
+          if (blacklisted) {
+            logger.warn(`WebSocket upgrade rejected: Token jti ${decoded.jti} is blacklisted`);
+            return null;
+          }
+        }
         return {
           id: decoded.id,
           email: decoded.email,

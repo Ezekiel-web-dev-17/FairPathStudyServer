@@ -1,10 +1,9 @@
 import app from "../app.js";
 import request from "supertest";
-import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { JWT_SECRET } from "../config/config.js";
 import { prisma, pool } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
+import { encryptResetToken } from "../utils/crypto.js";
 
 describe("User Password Recovery and Reset Flow Tests", () => {
   const testEmail = "reset_test@fairpath.com";
@@ -103,9 +102,13 @@ describe("User Password Recovery and Reset Flow Tests", () => {
       });
       expect(user).not.toBeNull();
 
-      // Generate a valid stateless hybrid token (expires in 15 mins)
-      const secret = JWT_SECRET! + user!.passwordHash;
-      const token = jwt.sign({ id: user!.id, email: user!.email }, secret, { expiresIn: "15m" });
+      // Generate a valid encrypted token (expires in 15 mins)
+      const token = encryptResetToken({
+        id: user!.id,
+        email: user!.email,
+        passwordHash: user!.passwordHash,
+        expiresAt: Math.floor(Date.now() / 1000) + 900
+      });
 
       const newPassword = "newerSecurePassword123!";
 
@@ -132,9 +135,13 @@ describe("User Password Recovery and Reset Flow Tests", () => {
       });
       expect(user).not.toBeNull();
 
-      // Generate token using the current hash
-      const secret = JWT_SECRET! + user!.passwordHash;
-      const token = jwt.sign({ id: user!.id, email: user!.email }, secret, { expiresIn: "15m" });
+      // Generate encrypted token using the current hash
+      const token = encryptResetToken({
+        id: user!.id,
+        email: user!.email,
+        passwordHash: user!.passwordHash,
+        expiresAt: Math.floor(Date.now() / 1000) + 900
+      });
 
       // First reset (should succeed)
       const firstReset = await request(app)
@@ -150,15 +157,19 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .expect(400);
 
       expect(secondReset.body).toHaveProperty("status", "error");
-      expect(secondReset.body.message).toContain("Password reset link is invalid or has expired");
+      expect(secondReset.body.message).toContain("Password reset link is invalid");
     });
 
     it("should reject reset password if new password is too short", async () => {
       const user = await prisma.user.findUnique({
         where: { email: testEmail },
       });
-      const secret = JWT_SECRET! + user!.passwordHash;
-      const token = jwt.sign({ id: user!.id, email: user!.email }, secret, { expiresIn: "15m" });
+      const token = encryptResetToken({
+        id: user!.id,
+        email: user!.email,
+        passwordHash: user!.passwordHash,
+        expiresAt: Math.floor(Date.now() / 1000) + 900
+      });
 
       const response = await request(app)
         .post("/api/v1/auth/reset-password")
@@ -174,13 +185,13 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         where: { email: testEmail },
       });
       
-      const secret = JWT_SECRET! + user!.passwordHash;
-      // Simulate an expired token: iat 20 minutes in the past, expiresIn 15m → already expired
-      const token = jwt.sign(
-        { id: user!.id, email: user!.email, iat: Math.floor(Date.now() / 1000) - 1200 }, 
-        secret, 
-        { expiresIn: "15m" }
-      );
+      // Simulate an expired token: expiresAt is 10 seconds in the past
+      const token = encryptResetToken({
+        id: user!.id,
+        email: user!.email,
+        passwordHash: user!.passwordHash,
+        expiresAt: Math.floor(Date.now() / 1000) - 10
+      });
 
       const response = await request(app)
         .post("/api/v1/auth/reset-password")
