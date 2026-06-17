@@ -1,5 +1,5 @@
 import { Queue, Worker } from 'bullmq';
-import { REDIS_URL } from './config.js';
+import { REDIS_URL, CLEANUP_CRON } from './config.js';
 import { runCleanupProcess } from '../scripts/cleanupInactiveUsers.js';
 import logger from '../utils/logger.js';
 
@@ -13,7 +13,7 @@ export const cleanupQueue = new Queue('cleanup-queue', { connection });
 
 /**
  * Initializes and schedules the repeatable daily cleanup job.
- * Schedules the job to run daily at 2:00 AM (CRON: '0 2 * * *').
+ * Schedules the job to run based on the CLEANUP_CRON environment variable (defaults to '0 2 * * *').
  */
 export const initScheduler = async (): Promise<void> => {
   try {
@@ -31,21 +31,23 @@ export const initScheduler = async (): Promise<void> => {
       }
     }
 
-    // Schedule the repeatable daily cleanup job at 2:00 AM daily
+    const cronPattern = CLEANUP_CRON || '0 2 * * *';
+
+    // Schedule the repeatable daily cleanup job
     await cleanupQueue.add(
       'run-inactive-cleanup',
       {},
       {
         jobId,
         repeat: {
-          pattern: '0 2 * * *', // Run daily at 2:00 AM
+          pattern: cronPattern,
         },
         removeOnComplete: true, // Auto-cleanup job history to save Redis space
         removeOnFail: 100, // Retain last 100 failures for debugging
       }
     );
 
-    logger.info('✅ BullMQ repeatable daily cleanup job scheduled successfully for 2:00 AM.');
+    logger.info(`✅ BullMQ repeatable daily cleanup job scheduled successfully with pattern: "${cronPattern}".`);
   } catch (error) {
     logger.error('Failed to initialize BullMQ Scheduler:', error);
   }
@@ -67,9 +69,27 @@ export const cleanupWorker = new Worker(
   {
     connection,
     concurrency: 2, // Only 1 worker executing cleanup at a time
+    skipStalledCheck: process.env.NODE_ENV === 'test',
   }
 );
 
 cleanupWorker.on('failed', (job, err) => {
   logger.error(`[Scheduler Worker] Job ${job?.id} failed with error:`, err);
 });
+
+// Unref connection handles in test environment to prevent Jest from hanging on open handles
+if (process.env.NODE_ENV === 'test') {
+  cleanupWorker.waitUntilReady().then((client) => {
+    (client as any).stream?.unref();
+  });
+  const bclient = (cleanupWorker as any).blockingConnection;
+  if (bclient) {
+    bclient.client.then((client: any) => {
+      (client as any).stream?.unref();
+    });
+  }
+  cleanupQueue.waitUntilReady().then((client) => {
+    (client as any).stream?.unref();
+  });
+}
+
