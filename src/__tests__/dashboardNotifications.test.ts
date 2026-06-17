@@ -422,4 +422,68 @@ describe("Dashboard and Notification Center Integration Tests", () => {
       }
     });
   });
+
+  // ─────────────────────────────────────────────────────
+  // Admin KPIs & Performance Dashboard
+  // ─────────────────────────────────────────────────────
+  describe("GET /api/v1/admin/kpis", () => {
+    it("should return correct operations KPIs structure for admin", async () => {
+      const response = await request(app)
+        .get("/api/v1/admin/kpis")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      expect(response.body.data).toHaveProperty("summary");
+      expect(response.body.data).toHaveProperty("studentGrowth");
+      expect(response.body.data).toHaveProperty("matchDistribution");
+      expect(response.body.data).toHaveProperty("funnel");
+      expect(response.body.data).toHaveProperty("performanceByInstitution");
+
+      const { summary, studentGrowth, matchDistribution, funnel, performanceByInstitution } = response.body.data;
+
+      // Summary KPIs
+      expect(summary.totalApplicants).toHaveProperty("value");
+      expect(summary.totalApplicants).toHaveProperty("trend");
+      expect(summary.matchRate).toHaveProperty("value");
+      expect(summary.matchRate).toHaveProperty("trend");
+      expect(summary.partnerUniversities).toHaveProperty("value");
+      expect(summary.partnerUniversities).toHaveProperty("trend");
+      expect(summary.avgDecisionTime).toHaveProperty("value");
+      expect(summary.avgDecisionTime).toHaveProperty("trend");
+
+      // Growth charts
+      expect(Array.isArray(studentGrowth.months)).toBe(true);
+      expect(Array.isArray(studentGrowth.undergraduate)).toBe(true);
+      expect(Array.isArray(studentGrowth.graduate)).toBe(true);
+
+      // Match Distribution
+      expect(Array.isArray(matchDistribution)).toBe(true);
+
+      // Funnel
+      expect(funnel).toHaveProperty("leadsGenerated");
+      expect(funnel.profilesCreated).toHaveProperty("value");
+      expect(funnel.profilesCreated).toHaveProperty("retention");
+      expect(funnel.draftsSubmitted).toHaveProperty("value");
+      expect(funnel.draftsSubmitted).toHaveProperty("retention");
+      expect(funnel.finalMatches).toHaveProperty("value");
+      expect(funnel.finalMatches).toHaveProperty("successRate");
+
+      // Performance
+      expect(Array.isArray(performanceByInstitution)).toBe(true);
+    });
+
+    it("should reject KPIs check for unauthenticated user", async () => {
+      await request(app)
+        .get("/api/v1/admin/kpis")
+        .expect(401);
+    });
+
+    it("should reject KPIs check for student user", async () => {
+      await request(app)
+        .get("/api/v1/admin/kpis")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .expect(403);
+    });
+  });
 });
