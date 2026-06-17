@@ -3,6 +3,7 @@
 // - getFeaturedUniversities:    GET /universities/partners  — Featured partner images only
 
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import { Prisma } from '@prisma/client';
 import logger from '../utils/logger.js';
@@ -140,6 +141,158 @@ export const getFeaturedUniversities = async (_req: Request, res: Response): Pro
     res.status(200).json({ success: true, data: featured });
   } catch (error) {
     logger.error('getFeaturedUniversities error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+export const getUniversityBySlug = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+
+    if (typeof slug !== 'string') {
+      res.status(400).json({ success: false, error: 'Invalid slug' });
+      return;
+    }
+
+    const university = await prisma.university.findUnique({
+      where: { slug }
+    });
+
+    if (!university) {
+      res.status(404).json({ success: false, error: 'University not found' });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: university });
+  } catch (error) {
+    logger.error('getUniversityBySlug error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+/**
+ * Normalizes and checks English proficiency scores across different testing platforms.
+ * Maps scales to a standard IELTS 6.5 default benchmark.
+ */
+function isEnglishRequirementMet(
+  testType: string | null | undefined,
+  scoreStr: string | null | undefined,
+  requiredIelts: number = 6.5
+): boolean {
+  if (!scoreStr) return false;
+  const score = parseFloat(scoreStr);
+  if (isNaN(score)) return false;
+
+  const type = (testType || 'IELTS').toUpperCase();
+
+  // 1. TOEFL (Scale: 0 - 120)
+  if (type.includes('TOEFL')) {
+    const toeflRequired = requiredIelts === 6.5 ? 80 : requiredIelts === 7.0 ? 90 : requiredIelts === 7.5 ? 100 : 80;
+    return score >= toeflRequired;
+  }
+
+  // 2. Duolingo English Test / DET (Scale: 10 - 160)
+  if (type.includes('DUOLINGO') || type.includes('DET')) {
+    const detRequired = requiredIelts === 6.5 ? 110 : requiredIelts === 7.0 ? 120 : requiredIelts === 7.5 ? 130 : 110;
+    return score >= detRequired;
+  }
+
+  // 3. PTE Academic (Scale: 10 - 90)
+  if (type.includes('PTE')) {
+    const pteRequired = requiredIelts === 6.5 ? 58 : requiredIelts === 7.0 ? 65 : requiredIelts === 7.5 ? 73 : 58;
+    return score >= pteRequired;
+  }
+
+  // 4. Default / IELTS (Scale: 0 - 9)
+  return score >= requiredIelts;
+}
+
+export const getUserMatches = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      return;
+    }
+
+    // 1. Fetch user profile and onboarding settings
+    const onboarding = await prisma.userOnboarding.findUnique({ where: { userId } });
+    if (!onboarding) {
+      res.status(400).json({ success: false, error: 'Please complete onboarding first.' });
+      return;
+    }
+
+    // 2. Fetch all partner universities
+    const universities = await prisma.university.findMany({
+      where: { isPartner: true },
+    });
+
+    // 3. Score calculation logic
+    const matchedList = universities.map((uni) => {
+      let score = 0;
+      const reasons: string[] = [];
+      const warnings: string[] = [];
+
+      // A. Budget Match (Weight: 30%)
+      if (onboarding.annualBudget) {
+        const userBudget = Number(onboarding.annualBudget);
+        if (userBudget >= uni.tuitionMax) {
+          score += 30;
+          reasons.push('Budget Aligned');
+        } else if (userBudget >= uni.tuitionMin) {
+          score += 15;
+          reasons.push('Partially Budget Aligned');
+        } else {
+          warnings.push('Exceeds Budget');
+        }
+      }
+
+      // B. Major Match (Weight: 30%)
+      if (onboarding.intendedMajor) {
+        const hasMajor = uni.departments.some((dept) =>
+          dept.toLowerCase().includes(onboarding.intendedMajor!.toLowerCase())
+        );
+        if (hasMajor) {
+          score += 30;
+          reasons.push('Offering Intended Major');
+        }
+      }
+
+      // C. Destination Country Match (Weight: 20%)
+      if (onboarding.destinations && onboarding.destinations.length > 0) {
+        const destMatch = onboarding.destinations.some(
+          (dest) => dest.toLowerCase() === uni.locationCountry.toLowerCase()
+        );
+        if (destMatch) {
+          score += 20;
+          reasons.push('Located in Preferred Destination');
+        }
+      }
+
+      // D. English proficiency (Weight: 20%)
+      if (onboarding.englishScore) {
+        const isMet = isEnglishRequirementMet(onboarding.englishTest, onboarding.englishScore, 6.5);
+        if (isMet) {
+          score += 20;
+          reasons.push('English Requirements Met');
+        } else {
+          warnings.push('Higher Language Scores Recommended');
+        }
+      }
+
+      return {
+        university: uni,
+        matchScore: score === 0 ? 50 : score, // Default baseline
+        reasons,
+        warnings,
+      };
+    });
+
+    // Sort matching results descending
+    matchedList.sort((a, b) => b.matchScore - a.matchScore);
+    res.status(200).json({ success: true, data: matchedList });
+  } catch (error) {
+    logger.error('getUserMatches error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
