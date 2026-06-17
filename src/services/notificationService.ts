@@ -9,7 +9,18 @@
  * - Notification creation failures are swallowed so they never break the originating action.
  */
 
-import { NotificationType } from '@prisma/client';
+export type NotificationType =
+  | 'USER_REGISTERED'
+  | 'USER_ONBOARDING_COMPLETED'
+  | 'APPLICATION_SUBMITTED'
+  | 'APPLICATION_STATUS_CHANGED'
+  | 'UNIVERSITY_CREATED'
+  | 'UNIVERSITY_UPDATED'
+  | 'UNIVERSITY_DELETED'
+  | 'CACHE_CLEARED'
+  | 'SCHOLARSHIP_DEADLINE_APPROACHING'
+  | 'SYSTEM_ALERT';
+
 import { prisma } from '../config/db.js';
 import { webSocketService } from './websocketService.js';
 import logger from '../utils/logger.js';

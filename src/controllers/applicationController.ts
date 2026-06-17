@@ -243,7 +243,7 @@ export const updateApplicationStatus = async (req: AuthRequest, res: Response): 
 
     const updated = await prisma.application.update({
       where: { id },
-      data: { status: status as ValidStatus },
+      data: { status: status as any },
       select: {
         id: true,
         status: true,
