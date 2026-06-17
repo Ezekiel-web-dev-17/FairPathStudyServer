@@ -3,6 +3,29 @@ import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import logger from '../utils/logger.js';
 
+interface UserOnboardingData {
+  fullName?: string | null;
+  dob?: Date | null;
+  currentCountry?: string | null;
+  nationality?: string | null;
+  visaHistory?: boolean | null;
+  degreeLevel?: string | null;
+  intendedMajor?: string | null;
+  gpa?: string | null;
+  annualBudget?: any;
+  financialAid?: string | null;
+  destinations?: string[];
+  englishTest?: string | null;
+  englishScore?: string | null;
+  academicTest?: string | null;
+  academicScore?: string | null;
+  extracurriculars?: string[];
+  workExperience?: string | null;
+  industry?: string | null;
+  consent?: boolean;
+  isCompleted?: boolean;
+}
+
 /**
  * Calculates a dynamic profile completion score based on verification and onboarding steps.
  * - Verification & Signup: 20%
@@ -11,7 +34,7 @@ import logger from '../utils/logger.js';
  * - Step 3 (Testing & Professional details): 20%
  * - Step 4 (Consent & Completion): 10%
  */
-export const calculateCompletionScore = (isVerified: boolean, onboarding: any): number => {
+export const calculateCompletionScore = (isVerified: boolean, onboarding: UserOnboardingData): number => {
   let score = 0;
   if (isVerified) score += 20;
 
@@ -29,7 +52,7 @@ export const calculateCompletionScore = (isVerified: boolean, onboarding: any): 
       score += 20;
     }
     // Step 4: Consent & Completion
-    if (onboarding.consent && onboarding.isCompleted) {
+    if (onboarding.consent) {
       score += 10;
     }
   }
@@ -94,17 +117,31 @@ export const saveOnboarding = async (req: AuthRequest, res: Response): Promise<v
       }
     }
 
+    // Clean and convert visaHistory from string "yes"/"no" or boolean to boolean
+    let visaHistoryBool: boolean | undefined = undefined;
+    if (onboardingData.visaHistory === 'yes' || onboardingData.visaHistory === true) {
+      visaHistoryBool = true;
+    } else if (onboardingData.visaHistory === 'no' || onboardingData.visaHistory === false) {
+      visaHistoryBool = false;
+    }
+
+    // Sanitize and parse annualBudget safely
+    let sanitizedBudget: string | undefined = undefined;
+    if (onboardingData.annualBudget) {
+      sanitizedBudget = onboardingData.annualBudget.toString().replace(/[^0-9.]/g, '');
+    }
+
     // Prepare matching Prisma fields
-    const dataToSave = {
+    const dataToSave: UserOnboardingData = {
       fullName: onboardingData.fullName,
       dob: formattedDob,
       currentCountry: onboardingData.currentCountry,
       nationality: onboardingData.nationality,
-      visaHistory: onboardingData.visaHistory,
+      visaHistory: visaHistoryBool,
       degreeLevel: onboardingData.degreeLevel,
       intendedMajor: onboardingData.intendedMajor,
       gpa: onboardingData.gpa,
-      annualBudget: onboardingData.annualBudget,
+      annualBudget: sanitizedBudget,
       financialAid: onboardingData.financialAid,
       destinations: onboardingData.destinations,
       englishTest: onboardingData.englishTest,
