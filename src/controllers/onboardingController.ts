@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import logger from '../utils/logger.js';
+import { createAdminNotification } from '../services/notificationService.js';
 
 interface UserOnboardingData {
   fullName?: string | null;
@@ -275,12 +276,23 @@ export const saveOnboarding = async (req: AuthRequest, res: Response): Promise<v
       select: { profileCompletionPercent: true }
     });
 
+    // Notify admins if the user completed onboarding (fire-and-forget — never throws)
+    if (isSubmit) {
+      await createAdminNotification({
+        type: 'USER_ONBOARDING_COMPLETED',
+        title: 'Student Onboarding Completed',
+        body: 'A student has completed their onboarding profile and is now ready for university matching.',
+        metadata: { userId },
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: isSubmit ? 'Onboarding completed successfully' : 'Draft saved successfully',
       data: userOnboarding,
       profileCompletionPercent: updatedUser?.profileCompletionPercent || 0
     });
+
   } catch (error) {
     logger.error('Error saving onboarding:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -17,6 +17,20 @@ enum ApplicationStatus {
   IN_REVIEW
   ACCEPTED
   REJECTED
+  DEFERRED
+}
+
+enum NotificationType {
+  USER_REGISTERED
+  USER_ONBOARDING_COMPLETED
+  APPLICATION_SUBMITTED
+  APPLICATION_STATUS_CHANGED
+  UNIVERSITY_CREATED
+  UNIVERSITY_UPDATED
+  UNIVERSITY_DELETED
+  CACHE_CLEARED
+  SCHOLARSHIP_DEADLINE_APPROACHING
+  SYSTEM_ALERT
 }
 
 model User {
@@ -141,4 +155,18 @@ model UserOnboarding {
 
   @@index([userId])
   @@map("user_preferences")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  body      String           @db.Text
+  metadata  Json?            // Contextual payload (userId, universityId, etc.) — never contains sensitive data
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([isRead])
+  @@index([createdAt])
 }

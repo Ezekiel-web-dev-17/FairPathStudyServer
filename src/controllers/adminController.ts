@@ -9,6 +9,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import { invalidateCacheByPattern } from '../config/redis.js';
 import { prisma } from '../config/db.js';
 import logger from '../utils/logger.js';
+import { createAdminNotification } from '../services/notificationService.js';
 
 // ── Whitelist of fields an admin is allowed to set on a university ─────────────
 const UNIVERSITY_WRITABLE_FIELDS = new Set([
@@ -27,8 +28,108 @@ function sanitizeUniversityBody(body: Record<string, unknown>): Record<string, u
 }
 
 // ── GET /admin/analytics ──────────────────────────────────────────────────────
+/**
+ * Returns a comprehensive KPI snapshot for the admin dashboard in a single DB round-trip.
+ * Matches the data structure expected by the Operations Overview and Analytics pages.
+ */
 export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<void> => {
-  res.status(501).json({ success: false, error: 'Not implemented' });
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Run all counts in parallel — groupBy requires a separate call (not inside $transaction)
+    const [
+      totalUsers,
+      verifiedUsers,
+      onboardedUsers,
+      newUsersLast30Days,
+      totalApplications,
+      applicationsByStatus,
+      totalUniversities,
+      partnerUniversities,
+      featuredUniversities,
+      totalScholarships,
+      topUniversities,
+      recentNotifications,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isVerified: true } }),
+      prisma.userOnboarding.count({ where: { isCompleted: true } }),
+      prisma.user.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      prisma.application.count(),
+      prisma.application.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        orderBy: { status: 'asc' },
+      }),
+      prisma.university.count(),
+      prisma.university.count({ where: { isPartner: true } }),
+      prisma.university.count({ where: { isFeatured: true } }),
+      prisma.scholarship.count(),
+      prisma.university.findMany({
+        take: 5,
+        orderBy: { applications: { _count: 'desc' } },
+        select: {
+          id: true,
+          name: true,
+          locationCountry: true,
+          isPartner: true,
+          _count: { select: { applications: true } },
+        },
+      }),
+      (prisma as any).notification.findMany({
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, type: true, title: true, body: true, isRead: true, createdAt: true },
+      }),
+    ]);
+
+    // Reshape applicationsByStatus into a flat object
+    const byStatus: Record<string, number> = {
+      DRAFT: 0, SUBMITTED: 0, IN_REVIEW: 0, ACCEPTED: 0, REJECTED: 0, DEFERRED: 0,
+    };
+    for (const row of applicationsByStatus) {
+      byStatus[row.status] = row._count._all;
+    }
+
+    // Acceptance rate: ACCEPTED / total with final decisions
+    const decided = (byStatus.ACCEPTED ?? 0) + (byStatus.REJECTED ?? 0);
+    const acceptanceRate = decided > 0 ? Math.round(((byStatus.ACCEPTED ?? 0) / decided) * 1000) / 10 : null;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        users: {
+          total: totalUsers,
+          verified: verifiedUsers,
+          onboardingCompleted: onboardedUsers,
+          newLast30Days: newUsersLast30Days,
+        },
+        applications: {
+          total: totalApplications,
+          byStatus,
+          acceptanceRate,
+        },
+        universities: {
+          total: totalUniversities,
+          partners: partnerUniversities,
+          featured: featuredUniversities,
+        },
+        scholarships: { total: totalScholarships },
+        topUniversitiesByApplications: topUniversities.map((u: { id: string; name: string; locationCountry: string; isPartner: boolean; _count: { applications: number } }) => ({
+          id: u.id,
+          name: u.name,
+          country: u.locationCountry,
+          isPartner: u.isPartner,
+          applicationCount: u._count.applications,
+        })),
+        recentActivity: recentNotifications,
+      },
+    });
+  } catch (error) {
+    logger.error('getAnalytics error: %o', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
 };
 
 // ── POST /universities ────────────────────────────────────────────────────────
@@ -58,6 +159,15 @@ export const createUniversity = async (req: AuthRequest, res: Response): Promise
     const university = await prisma.university.create({ data: data as any });
 
     logger.info(`University created: ${university.id} — ${university.name}`);
+
+    // Notify admins of the new university (fire-and-forget)
+    await createAdminNotification({
+      type: 'UNIVERSITY_CREATED',
+      title: 'University Added',
+      body: `"${university.name}" (${university.locationCity}, ${university.locationCountry}) was added to the platform.`,
+      metadata: { universityId: university.id },
+    });
+
     res.status(201).json({ success: true, message: 'University created successfully', data: university });
   } catch (error) {
     logger.error('createUniversity error:', error);
@@ -94,6 +204,15 @@ export const updateUniversity = async (req: AuthRequest, res: Response): Promise
 
     const updated = await prisma.university.update({ where: { id }, data: data as any });
     logger.info(`University updated: ${id}`);
+
+    // Notify admins (fire-and-forget)
+    await createAdminNotification({
+      type: 'UNIVERSITY_UPDATED',
+      title: 'University Updated',
+      body: `"${updated.name}" record was updated.`,
+      metadata: { universityId: id },
+    });
+
     res.status(200).json({ success: true, message: 'University updated successfully', data: updated });
   } catch (error) {
     logger.error('updateUniversity error:', error);
@@ -116,8 +235,18 @@ export const deleteUniversity = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
+    const deleted = await prisma.university.findUnique({ where: { id }, select: { name: true } });
     await prisma.university.delete({ where: { id } });
     logger.info(`University deleted: ${id}`);
+
+    // Notify admins (fire-and-forget)
+    await createAdminNotification({
+      type: 'UNIVERSITY_DELETED',
+      title: 'University Removed',
+      body: `"${deleted?.name ?? 'A university'}" was removed from the platform.`,
+      metadata: { universityId: id },
+    });
+
     res.status(200).json({ success: true, message: 'University deleted successfully' });
   } catch (error) {
     logger.error('deleteUniversity error:', error);
@@ -130,6 +259,15 @@ export const clearCache = async (_req: AuthRequest, res: Response): Promise<void
   try {
     await invalidateCacheByPattern('cache:*');
     logger.info('Cache cleared by admin');
+
+    // Notify admins (fire-and-forget)
+    await createAdminNotification({
+      type: 'CACHE_CLEARED',
+      title: 'Cache Cleared',
+      body: 'The platform Redis cache was fully invalidated by an admin.',
+      metadata: {},
+    });
+
     res.status(200).json({ success: true, message: 'Cache cleared successfully' });
   } catch (error) {
     logger.error('clearCache error:', error);

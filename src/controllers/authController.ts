@@ -23,6 +23,7 @@ import {
 } from '../services/tokenService.js';
 import { encryptResetToken, decryptResetToken } from '../utils/crypto.js';
 import { webSocketService } from '../services/websocketService.js';
+import { createAdminNotification } from '../services/notificationService.js';
 
 export const validatePassword = (password: string): string | null => {
   if (password.length < 8) {
@@ -153,6 +154,14 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
         logger.error(`Error creating contact in Resend during registration for ${email}:`, err);
       }
     }
+
+    // Notify admins of new registration (fire-and-forget — never throws)
+    await createAdminNotification({
+      type: 'USER_REGISTERED',
+      title: 'New User Registered',
+      body: `${firstName} ${lastName} created an account. Awaiting email verification.`,
+      metadata: { userId: user.id },
+    });
 
     res.status(201).json({
       status: 'success',

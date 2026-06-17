@@ -4,6 +4,8 @@ import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, 
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
 import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities } from '../controllers/adminController.js';
+import { getNotifications, getUnreadCount, markAsRead, markAllRead, deleteNotification } from '../controllers/notificationController.js';
+import { createApplication, getAdminApplications, updateApplicationStatus } from '../controllers/applicationController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';
 import { cacheMiddleware, inValidateCacheMiddleware } from '../middleware/cache.js';
@@ -42,6 +44,7 @@ router.get('/favourites', authenticateJWT, getFavourites);
 router.post('/favourites', authenticateJWT, addFavourite);
 router.delete('/favourites/:id', authenticateJWT, deleteFavourite);
 router.get('/applications', authenticateJWT, getApplications);
+router.post('/applications', authenticateJWT, createApplication);
 
 // ── Admin Portal (Requires ADMIN Role) ──
 router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
@@ -49,12 +52,24 @@ router.get('/admin/universities', authenticateJWT, requireAdmin, getAdminUnivers
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
 
+// ── Admin Applications Management ──
+router.get('/admin/applications', authenticateJWT, requireAdmin, getAdminApplications);
+router.patch('/admin/applications/:id/status', authenticateJWT, requireAdmin, updateApplicationStatus);
+
+// ── Admin Notification Center ──
+// NOTE: /read-all must come before /:id/read to avoid route shadowing
+router.get('/admin/notifications', authenticateJWT, requireAdmin, getNotifications);
+router.get('/admin/notifications/unread-count', authenticateJWT, requireAdmin, getUnreadCount);
+router.patch('/admin/notifications/read-all', authenticateJWT, requireAdmin, markAllRead);
+router.patch('/admin/notifications/:id/read', authenticateJWT, requireAdmin, markAsRead);
+router.delete('/admin/notifications/:id', authenticateJWT, requireAdmin, deleteNotification);
+
 // ── Onboarding & Matches ──
 router.get('/onboarding', authenticateJWT, getOnboarding);
 router.post('/onboarding', authenticateJWT, saveOnboarding);
 router.get('/matches', authenticateJWT, getUserMatches);
 
-// —— Cache clearing ──
+// ── Cache Clearing ──
 router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
 
 export default router;
