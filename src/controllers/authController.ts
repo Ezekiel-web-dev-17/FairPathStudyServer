@@ -380,21 +380,6 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-<<<<<<< HEAD
-    let decoded: { email: string };
-    try {
-      decoded = jwt.verify(token, JWT_SECRET!, { algorithms: ['HS256'] }) as { email: string };
-    } catch (err) {
-      res.status(400).json({
-        status: 'error',
-        message: 'Unsubscribe token is invalid or expired.',
-      });
-      return;
-    }
-
-    const email = decoded.email;
-=======
->>>>>>> 02fc64d (feat(service): integrate Resend SDK and refactor email unsubscribe logic)
     if (!email) {
       res.status(400).json({
         status: 'error',
