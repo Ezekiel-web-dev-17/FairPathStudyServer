@@ -30,4 +30,5 @@ export const {
     SESSION_SECRET,
     RESEND_API_KEY,
     RESEND_AUDIENCE_ID,
+    CLEANUP_CRON,
 } = process.env;
