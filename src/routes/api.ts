@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout, forgotPassword, resetPassword, refreshToken } from '../controllers/authController.js';
 import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
-import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
+import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications, getAdminOperations } from '../controllers/dashboardController.js';
 import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities } from '../controllers/adminController.js';
 import { getNotifications, getUnreadCount, markAsRead, markAllRead, deleteNotification } from '../controllers/notificationController.js';
 import { createApplication, getAdminApplications, updateApplicationStatus } from '../controllers/applicationController.js';
@@ -48,6 +48,7 @@ router.post('/applications', authenticateJWT, createApplication);
 
 // ── Admin Portal (Requires ADMIN Role) ──
 router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
+router.get('/admin/operations', authenticateJWT, requireAdmin, getAdminOperations);
 router.get('/admin/universities', authenticateJWT, requireAdmin, getAdminUniversities);
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);

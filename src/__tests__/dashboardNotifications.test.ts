@@ -361,4 +361,65 @@ describe("Dashboard and Notification Center Integration Tests", () => {
       expect(response.body.data.applications.byStatus).toHaveProperty("DEFERRED");
     });
   });
+
+  // ─────────────────────────────────────────────────────
+  // Admin Operations Dashboard
+  // ─────────────────────────────────────────────────────
+  describe("GET /api/v1/admin/operations", () => {
+    it("should return operations overview and recent applications list for admin", async () => {
+      const response = await request(app)
+        .get("/api/v1/admin/operations")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      expect(response.body.data).toHaveProperty("overview");
+      expect(response.body.data).toHaveProperty("recentApplications");
+
+      const { overview, recentApplications } = response.body.data;
+      expect(overview).toHaveProperty("totalStudents");
+      expect(overview).toHaveProperty("activeApplications");
+      expect(overview).toHaveProperty("matchSuccessRate");
+      expect(overview).toHaveProperty("flaggedCases");
+
+      expect(Array.isArray(recentApplications)).toBe(true);
+      expect(recentApplications.length).toBeGreaterThan(0);
+      expect(recentApplications[0]).toHaveProperty("id");
+      expect(recentApplications[0]).toHaveProperty("studentName");
+      expect(recentApplications[0]).toHaveProperty("targetedUniv");
+      expect(recentApplications[0]).toHaveProperty("status");
+      expect(recentApplications[0]).toHaveProperty("matchScore");
+      expect(recentApplications[0]).toHaveProperty("date");
+    });
+
+    it("should reject operations request with 403 if user is not an admin", async () => {
+      await request(app)
+        .get("/api/v1/admin/operations")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .expect(403);
+    });
+
+    it("should reject operations request with 401 if token is missing", async () => {
+      await request(app)
+        .get("/api/v1/admin/operations")
+        .expect(401);
+    });
+
+    it("should support filtering by status (READY, PENDING, NEEDS DOCUMENTS)", async () => {
+      const response = await request(app)
+        .get("/api/v1/admin/operations?status=READY")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      const apps = response.body.data.recentApplications;
+      expect(Array.isArray(apps)).toBe(true);
+      
+      // Since it falls back to mockup data when empty, Elena Jenkins and David Park are READY.
+      // Verify that all returned applications strictly match the filtered status
+      for (const app of apps) {
+        expect(app.status).toBe("READY");
+      }
+    });
+  });
 });
