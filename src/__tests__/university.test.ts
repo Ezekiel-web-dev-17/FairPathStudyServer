@@ -324,6 +324,103 @@ describe("Universities Integration Tests", () => {
   });
 
   // ─────────────────────────────────────────────────────
+  // GET /universities/:slug
+  // ─────────────────────────────────────────────────────
+  describe("GET /api/v1/universities/:slug", () => {
+    it("should return university info when querying valid slug", async () => {
+      const response = await request(app)
+        .get("/api/v1/universities/antigravity-uni")
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      expect(response.body.data).toHaveProperty("slug", "antigravity-uni");
+    });
+
+    it("should return 404 for non-existent slug", async () => {
+      const response = await request(app)
+        .get("/api/v1/universities/non-existent-slug-123")
+        .expect(404);
+
+      expect(response.body).toHaveProperty("success", false);
+      expect(response.body.error).toBe("University not found");
+    });
+  });
+
+  // ─────────────────────────────────────────────────────
+  // GET /matches
+  // ─────────────────────────────────────────────────────
+  describe("GET /api/v1/matches", () => {
+    it("should reject request with 401 if token is missing", async () => {
+      await request(app)
+        .get("/api/v1/matches")
+        .expect(401);
+    });
+
+    it("should return matching results based on user preferences", async () => {
+      // Setup mock onboarding for student user
+      await prisma.userOnboarding.upsert({
+        where: { userId: studentUserId },
+        update: {
+          intendedMajor: "Computer Science",
+          annualBudget: 60000,
+          destinations: ["United States"],
+          englishScore: "8.0",
+        },
+        create: {
+          userId: studentUserId,
+          fullName: "Alex Mercer",
+          dob: new Date("2000-01-01"),
+          currentCountry: "Canada",
+          nationality: "Canadian",
+          visaHistory: false,
+          intendedMajor: "Computer Science",
+          annualBudget: 60000,
+          destinations: ["United States"],
+          englishScore: "8.0",
+          consent: true,
+          isCompleted: true,
+        }
+      });
+
+      const response = await request(app)
+        .get("/api/v1/matches")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
+      expect(response.body.data[0]).toHaveProperty("matchScore");
+      expect(response.body.data[0]).toHaveProperty("reasons");
+    });
+  });
+
+  // ─────────────────────────────────────────────────────
+  // GET /admin/universities
+  // ─────────────────────────────────────────────────────
+  describe("GET /api/v1/admin/universities", () => {
+    it("should reject request with 403 if user is not an admin", async () => {
+      await request(app)
+        .get("/api/v1/admin/universities")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .expect(403);
+    });
+
+    it("should return list of partners with application counts for admin", async () => {
+      const response = await request(app)
+        .get("/api/v1/admin/universities")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty("success", true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
+      expect(response.body.data[0]).toHaveProperty("applicationsCount");
+      expect(response.body.data[0]).toHaveProperty("status");
+    });
+  });
+
+  // ─────────────────────────────────────────────────────
   // DELETE /universities/:id
   // ─────────────────────────────────────────────────────
   describe("DELETE /api/v1/universities/:id", () => {

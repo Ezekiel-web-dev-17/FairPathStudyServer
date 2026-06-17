@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout, forgotPassword, resetPassword, refreshToken } from '../controllers/authController.js';
-import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug } from '../controllers/universityController.js';
+import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
-import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache } from '../controllers/adminController.js';
+import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities } from '../controllers/adminController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';
 import { cacheMiddleware, inValidateCacheMiddleware } from '../middleware/cache.js';
@@ -27,6 +27,7 @@ router.put('/users/me/profile', authenticateJWT, updateProfile);
 router.get('/universities', cacheMiddleware(15 * 60 * 1000), getUniversities);
 router.get('/universities/featured', cacheMiddleware(15 * 60 * 1000), getFeaturedUniversitiesSlug);
 router.get('/universities/partners', cacheMiddleware(15 * 60 * 1000), getFeaturedUniversities);
+router.get('/universities/:slug', getUniversityBySlug);
 router.post('/universities/', authenticateJWT, requireAdmin, inValidateCacheMiddleware, createUniversity);
 router.put('/universities/:id', authenticateJWT, requireAdmin, inValidateCacheMiddleware, updateUniversity);
 router.delete('/universities/:id', authenticateJWT, requireAdmin, inValidateCacheMiddleware, deleteUniversity);
@@ -44,14 +45,16 @@ router.get('/applications', authenticateJWT, getApplications);
 
 // ── Admin Portal (Requires ADMIN Role) ──
 router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
+router.get('/admin/universities', authenticateJWT, requireAdmin, getAdminUniversities);
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
 
-// ── Onboarding ──
+// ── Onboarding & Matches ──
 router.get('/onboarding', authenticateJWT, getOnboarding);
 router.post('/onboarding', authenticateJWT, saveOnboarding);
+router.get('/matches', authenticateJWT, getUserMatches);
 
-// —— Cache clearing ——
+// —— Cache clearing ──
 router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
 
 export default router;
