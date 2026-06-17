@@ -1,17 +1,18 @@
 name: Deploy to Staging
 
-# Triggers automatically on pushes to the dev branch
+# Triggers automatically on completion of the CI workflow on the dev branch
 on:
-  push:
+  workflow_run:
+    workflows: ["CI — Security & Tests"]
     branches: [ "dev" ]
+    types:
+      - completed
 
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
-    # Only deploy after CI passes
-    needs: [security, test]
-    # Only run this job if the RAILWAY_TOKEN secret is actually configured
-    if: ${{ vars.RAILWAY_CONFIGURED == 'true' }}
+    # Only run this job if the CI workflow completed successfully and Railway is configured
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.RAILWAY_CONFIGURED == 'true' }}
 
     steps:
       - name: Checkout code
