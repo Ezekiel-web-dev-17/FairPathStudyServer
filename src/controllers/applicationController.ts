@@ -136,23 +136,76 @@ export const createApplication = async (req: AuthRequest, res: Response): Promis
   }
 };
 
+function getDbStatusFromUi(status: string): string | undefined {
+  const norm = status.toLowerCase().trim();
+  if (norm === 'under review') return 'IN_REVIEW';
+  if (norm === 'pending') return 'SUBMITTED';
+  if (norm === 'accepted') return 'ACCEPTED';
+  if (norm === 'deferred') return 'DEFERRED';
+  if (norm === 'rejected') return 'REJECTED';
+  if (norm === 'draft') return 'DRAFT';
+  return undefined;
+}
+
+function getUiStatusFromDb(status: string): string {
+  switch (status) {
+    case 'IN_REVIEW': return 'Under Review';
+    case 'SUBMITTED': return 'Pending';
+    case 'ACCEPTED': return 'Accepted';
+    case 'DEFERRED': return 'Deferred';
+    case 'REJECTED': return 'Rejected';
+    case 'DRAFT': return 'Draft';
+    default: return status;
+  }
+}
+
 // ── GET /admin/applications ───────────────────────────────────────────────────
 /**
  * Returns all student applications for admin review.
- * Supports filtering by status and pagination.
+ * Supports filtering by status, region, institution, and pagination.
  */
 export const getAdminApplications = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { page, limit, skip } = getPagination(req.query as Record<string, unknown>);
     const statusFilter = req.query.status as string | undefined;
+    const regionFilter = req.query.region as string | undefined;
+    const institutionFilter = req.query.institution as string | undefined;
     const universityId = req.query.universityId as string | undefined;
 
     const where: any = {};
-    if (statusFilter && (VALID_STATUSES as readonly string[]).includes(statusFilter)) {
-      where.status = statusFilter;
+
+    // 1. Status Filter (DB enum or UI display string)
+    if (statusFilter && statusFilter !== 'All Statuses') {
+      const dbStatus = (VALID_STATUSES as readonly string[]).includes(statusFilter as any)
+        ? statusFilter
+        : getDbStatusFromUi(statusFilter);
+      if (dbStatus) {
+        where.status = dbStatus;
+      }
     }
+
+    // 2. Institution Filter (ID or Name)
     if (universityId && typeof universityId === 'string') {
       where.universityId = universityId;
+    } else if (institutionFilter && institutionFilter !== 'All Institutions' && typeof institutionFilter === 'string') {
+      where.university = {
+        ...where.university,
+        name: {
+          contains: institutionFilter,
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    // 3. Region Filter (Country name)
+    if (regionFilter && regionFilter !== 'All Regions' && typeof regionFilter === 'string') {
+      where.university = {
+        ...where.university,
+        locationCountry: {
+          contains: regionFilter,
+          mode: 'insensitive',
+        },
+      };
     }
 
     const [total, applications] = await prisma.$transaction([
@@ -175,7 +228,6 @@ export const getAdminApplications = async (req: AuthRequest, res: Response): Pro
               id: true,
               firstName: true,
               lastName: true,
-              // Mask email for admin listing — full email available per-record if needed
               email: true,
             },
           },
@@ -191,9 +243,45 @@ export const getAdminApplications = async (req: AuthRequest, res: Response): Pro
       }),
     ]);
 
+    // Map applications to format requested by the UI / image
+    const formattedData = applications.map((app) => {
+      const year = new Date(app.createdAt).getFullYear();
+      
+      // Generate a deterministic 3-digit numeric code from the UUID
+      const getNumericSuffix = (uuidStr: string): string => {
+        let sum = 0;
+        for (let i = 0; i < uuidStr.length; i++) {
+          sum += uuidStr.charCodeAt(i);
+        }
+        const num = sum % 1000;
+        return String(num).padStart(3, '0');
+      };
+      
+      const appId = `APP-${year}-${getNumericSuffix(app.id)}`;
+      const studentName = `${app.user.firstName || ''} ${app.user.lastName || ''}`.trim() || app.user.email;
+      
+      // Oct 24, 2023 format
+      const formattedDate = new Date(app.createdAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+
+      return {
+        ...app,
+        appId,
+        studentName,
+        program: app.programId || 'General Program',
+        institution: app.university.name,
+        date: formattedDate,
+        statusLabel: getUiStatusFromDb(app.status),
+        region: app.university.locationCountry,
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: applications,
+      data: formattedData,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
