@@ -275,34 +275,108 @@ export const clearCache = async (_req: AuthRequest, res: Response): Promise<void
   }
 };
 
+function getShortCountry(country: string): string {
+  const norm = country.toLowerCase().trim();
+  if (norm === 'united kingdom' || norm === 'uk' || norm === 'great britain') return 'UK';
+  if (norm === 'united states' || norm === 'us' || norm === 'united states of america') return 'US';
+  if (norm === 'canada' || norm === 'ca') return 'CA';
+  if (norm === 'australia' || norm === 'au') return 'AU';
+  if (norm === 'switzerland' || norm === 'ch') return 'CH';
+  if (norm === 'singapore' || norm === 'sg') return 'SG';
+  return country;
+}
+
 // ── GET /admin/universities ───────────────────────────────────────────────────
-export const getAdminUniversities = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const getAdminUniversities = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const search = req.query.search as string | undefined;
+    const statusFilter = req.query.status as string | undefined; // 'all', 'active', 'pending'
+
+    // Base search where clause
+    const baseWhere: any = {};
+    if (search && typeof search === 'string' && search.trim() !== '') {
+      baseWhere.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { locationCity: { contains: search, mode: 'insensitive' } },
+        { locationCountry: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const where: any = { ...baseWhere };
+    if (statusFilter === 'active') {
+      where.isPartner = true;
+    } else if (statusFilter === 'pending') {
+      where.isPartner = false;
+    }
+
+    // Dynamic tab counts (matching active search)
+    const [countAll, countActive, countPending] = await Promise.all([
+      prisma.university.count({ where: baseWhere }),
+      prisma.university.count({ where: { ...baseWhere, isPartner: true } }),
+      prisma.university.count({ where: { ...baseWhere, isPartner: false } }),
+    ]);
+
     const partnerList = await prisma.university.findMany({
-      select: {
-        id: true,
-        name: true,
-        locationCity: true,
-        locationCountry: true,
-        rankingGlobal: true,
-        isPartner: true,
-        _count: {
-          select: { applications: true }
+      where,
+      include: {
+        applications: {
+          select: {
+            status: true
+          }
         }
       },
       orderBy: { name: 'asc' }
     });
 
-    const formattedData = partnerList.map(uni => ({
-      id: uni.id,
-      name: uni.name,
-      location: `${uni.locationCity}, ${uni.locationCountry}`,
-      rank: uni.rankingGlobal ?? "--",
-      applicationsCount: uni._count.applications,
-      status: uni.isPartner ? "Active Partnership" : "Inactive"
-    }));
+    const formattedData = partnerList.map((uni) => {
+      const details = (uni.details as Record<string, any>) || {};
 
-    res.status(200).json({ success: true, data: formattedData });
+      // Status mapping
+      const status = details.partnershipStatus || (uni.isPartner ? "Active Partnership" : "Contract Pending");
+
+      // Location formatting (e.g. Edinburgh, UK)
+      const countryAbbrev = getShortCountry(uni.locationCountry);
+      const location = `${uni.locationCity}, ${countryAbbrev}`;
+
+      // Global Rank
+      const rank = uni.rankingGlobal ? `#${uni.rankingGlobal}` : "--";
+
+      // Application Volume and Match Rate Calculations
+      const volume = uni.applications.length;
+      const accepted = uni.applications.filter((app) => app.status === 'ACCEPTED').length;
+
+      const hasApps = volume > 0;
+      const applicationVolume = hasApps ? volume.toLocaleString() : "--";
+      const matchRate = hasApps ? `${Math.round((accepted / volume) * 100)}%` : "--";
+
+      // Footer actions and pending signs
+      const substatus = details.partnershipSubstatus || (status === "Contract Pending" ? "Awaiting Signatures" : null);
+      const actionLabel = status === "Contract Pending" ? "Review" : "View Details";
+
+      return {
+        id: uni.id,
+        name: uni.name,
+        location,
+        rank,
+        status,
+        applicationVolume,
+        applicationsCount: volume,
+        matchRate,
+        substatus,
+        actionLabel,
+        isPartner: uni.isPartner
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: formattedData,
+      counts: {
+        all: countAll,
+        active: countActive,
+        pending: countPending
+      }
+    });
   } catch (error) {
     logger.error('getAdminUniversities error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
