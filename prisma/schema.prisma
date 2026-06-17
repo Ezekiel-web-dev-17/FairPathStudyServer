@@ -58,6 +58,7 @@ model University {
   description     String        @db.Text
   featuredImage   String?
   departments     String[]
+  details         Json?         // Holds structured JSON for Academics, Campus Life, Admissions
   isFeatured      Boolean       @default(false)
   isPartner       Boolean       @default(false)
   createdAt       DateTime      @default(now())

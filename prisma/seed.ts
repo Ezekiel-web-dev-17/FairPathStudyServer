@@ -86,6 +86,31 @@ async function main() {
       ],
       isFeatured: true,
       isPartner: true,
+      details: {
+        academics: {
+          graduationRate: "98%",
+          ratio: "3:1",
+          laureates: 98,
+          calendar: [
+            { period: "Autumn Semester", dates: "Sep 7 – Dec 22" },
+            { period: "Spring Semester", dates: "Feb 5 – May 28" }
+          ]
+        },
+        campusLife: {
+          clubs: 450,
+          residences: [
+            { name: "Maseeh Hall", price: "$6,500/semester", badge: "Historic" },
+            { name: "Simmons Hall", price: "$7,200/semester", badge: "Iconic Design" }
+          ]
+        },
+        admissions: {
+          acceptanceRate: "4.8%",
+          requirements: {
+            undergrad: ["SAT 1550+ or ACT 35+", "IELTS 7.5+", "High School Transcripts"],
+            postgrad: ["GRE/GMAT", "GPA 3.8+", "3 Letters of Recommendation"]
+          }
+        }
+      }
     },
     {
       name: 'Stanford University',
@@ -111,6 +136,32 @@ async function main() {
       ],
       isFeatured: true,
       isPartner: true,
+      details: {
+        academics: {
+          graduationRate: "95%",
+          ratio: "5:1",
+          laureates: 84,
+          calendar: [
+            { period: "Autumn Quarter", dates: "Sep 25 – Dec 15" },
+            { period: "Winter Quarter", dates: "Jan 8 – Mar 22" },
+            { period: "Spring Quarter", dates: "Apr 1 – Jun 12" }
+          ]
+        },
+        campusLife: {
+          clubs: 650,
+          residences: [
+            { name: "Toyon Hall", price: "$5,800/quarter", badge: "Most Popular" },
+            { name: "Branner Hall", price: "$6,100/quarter", badge: "Freshman Dorm" }
+          ]
+        },
+        admissions: {
+          acceptanceRate: "3.9%",
+          requirements: {
+            undergrad: ["SAT 1500+ or ACT 34+", "IELTS 7.5+", "Personal Essays"],
+            postgrad: ["GRE / MCAT / LSAT", "GPA 3.7+", "Statement of Purpose"]
+          }
+        }
+      }
     },
     {
       name: 'University of Oxford',
@@ -137,6 +188,32 @@ async function main() {
       ],
       isFeatured: false,
       isPartner: false,
+      details: {
+        academics: {
+          graduationRate: "97%",
+          ratio: "11:1",
+          laureates: 72,
+          calendar: [
+            { period: "Michaelmas Term", dates: "Oct 12 – Dec 5" },
+            { period: "Hilary Term", dates: "Jan 17 – Mar 12" },
+            { period: "Trinity Term", dates: "Apr 25 – Jun 18" }
+          ]
+        },
+        campusLife: {
+          clubs: 400,
+          residences: [
+            { name: "Balliol College Rooms", price: "£150 – £220/wk", badge: "Historic" },
+            { name: "Christ Church Rooms", price: "£180 – £260/wk", badge: "Premium" }
+          ]
+        },
+        admissions: {
+          acceptanceRate: "14.3%",
+          requirements: {
+            undergrad: ["A-Levels: A*A*A", "IELTS 7.5 (min 7.0 per band)"],
+            postgrad: ["First-Class Honours (or GPA 3.8+)", "Research Proposal"]
+          }
+        }
+      }
     },
     {
       name: 'University of Toronto',
@@ -162,6 +239,31 @@ async function main() {
       ],
       isFeatured: true,
       isPartner: false,
+      details: {
+        academics: {
+          graduationRate: "89%",
+          ratio: "19:1",
+          laureates: 10,
+          calendar: [
+            { period: "Fall Session", dates: "Sep 8 – Dec 21" },
+            { period: "Winter Session", dates: "Jan 4 – Apr 30" }
+          ]
+        },
+        campusLife: {
+          clubs: 800,
+          residences: [
+            { name: "University College", price: "$12,000/academic yr", badge: "Historic" },
+            { name: "Chestnut Residence", price: "$16,000/academic yr", badge: "Full Dining Included" }
+          ]
+        },
+        admissions: {
+          acceptanceRate: "43%",
+          requirements: {
+            undergrad: ["GPA 3.5+", "IELTS 6.5+ (no band under 6.0)"],
+            postgrad: ["Mid-B Equivalent (or GPA 3.3+)", "2 Academic References"]
+          }
+        }
+      }
     },
     {
       name: 'University of Melbourne',
@@ -187,6 +289,31 @@ async function main() {
       ],
       isFeatured: false,
       isPartner: true,
+      details: {
+        academics: {
+          graduationRate: "86%",
+          ratio: "22:1",
+          laureates: 8,
+          calendar: [
+            { period: "Semester 1", dates: "Mar 1 – Jun 20" },
+            { period: "Semester 2", dates: "Jul 26 – Nov 14" }
+          ]
+        },
+        campusLife: {
+          clubs: 200,
+          residences: [
+            { name: "University Hall", price: "AUD 380/wk", badge: "On-campus" },
+            { name: "Little Hall", price: "AUD 450/wk", badge: "Premium Student Living" }
+          ]
+        },
+        admissions: {
+          acceptanceRate: "70%",
+          requirements: {
+            undergrad: ["ATAR 85+ (or international equivalent)", "IELTS 6.5+"],
+            postgrad: ["Weighted Average Mark (WAM) 65%+", "CV / Resume"]
+          }
+        }
+      }
     },
   ];
 
