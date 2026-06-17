@@ -16,7 +16,7 @@ const UNIVERSITY_WRITABLE_FIELDS = new Set([
   'rankingGlobal', 'rankingNational', 'tuitionMin', 'tuitionMax',
   'setting', 'type', 'acceptanceRate', 'studentBodySize',
   'description', 'featuredImage', 'departments',
-  'isFeatured', 'isPartner',
+  'isFeatured', 'isPartner', 'details',
 ]);
 
 /** Strips any keys not in the whitelist so callers can never touch internal fields. */
@@ -133,6 +133,40 @@ export const clearCache = async (_req: AuthRequest, res: Response): Promise<void
     res.status(200).json({ success: true, message: 'Cache cleared successfully' });
   } catch (error) {
     logger.error('clearCache error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── GET /admin/universities ───────────────────────────────────────────────────
+export const getAdminUniversities = async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const partnerList = await prisma.university.findMany({
+      select: {
+        id: true,
+        name: true,
+        locationCity: true,
+        locationCountry: true,
+        rankingGlobal: true,
+        isPartner: true,
+        _count: {
+          select: { applications: true }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    const formattedData = partnerList.map(uni => ({
+      id: uni.id,
+      name: uni.name,
+      location: `${uni.locationCity}, ${uni.locationCountry}`,
+      rank: uni.rankingGlobal ?? "--",
+      applicationsCount: uni._count.applications,
+      status: uni.isPartner ? "Active Partnership" : "Inactive"
+    }));
+
+    res.status(200).json({ success: true, data: formattedData });
+  } catch (error) {
+    logger.error('getAdminUniversities error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
