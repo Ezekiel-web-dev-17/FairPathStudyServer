@@ -52,7 +52,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
       role
     } = req.body as {fullName: string, email: string, password: string, role?: "ADMIN"};
 
-    if(!fullName || !email || !password || !role){
+    if(!fullName || !email || !password){
       res.status(400).json({
         status: 'error',
         message: 'Full name, email and password are required',
@@ -99,7 +99,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
           firstName,
           lastName,
           passwordHash,
-          role,
+          role: role ?? "STUDENT",
           verificationCode,
           verificationCodeExpires,
         },
@@ -284,9 +284,41 @@ export const getMe = async (req: AuthRequest, res: Response, _next: NextFunction
   }
 };
 
-export const updateProfile = async (_req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
+export const updateProfile = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
-    res.status(501).json({ error: 'Not implemented' });
+    const {firstName, lastName, email, countryOfOrigin,targetDestinations,academicData,preferences} = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user?.id },
+    });
+    
+    if (!user) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+      return;
+    }
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        firstName,
+        lastName,
+        email,
+        countryOfOrigin,
+        targetDestinations,
+        academicData,
+        preferences,
+      }
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile updated successfully.',
+    });
+
+    return; 
   } catch (error) {
     res.status(500).json({
       status: 'error',
