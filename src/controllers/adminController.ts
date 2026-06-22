@@ -27,8 +27,74 @@ function sanitizeUniversityBody(body: Record<string, unknown>): Record<string, u
 }
 
 // ── GET /admin/analytics ──────────────────────────────────────────────────────
+/**
+ * Returns aggregated KPI metrics for the admin dashboard.
+ * Scalar counts are fetched in a single DB transaction; groupBy is run separately
+ * due to Prisma's type-narrowing limitations inside $transaction arrays.
+ */
 export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<void> => {
-  res.status(501).json({ success: false, error: 'Not implemented' });
+  try {
+    // 1. Run all scalar counts in parallel via a single transaction
+    const [
+      totalUsers,
+      verifiedUsers,
+      totalUniversities,
+      partnerUniversities,
+      totalScholarships,
+      totalSavedMatches,
+      totalApplications,
+    ] = await prisma.$transaction([
+      prisma.user.count(),
+      prisma.user.count({ where: { isVerified: true } }),
+      prisma.university.count(),
+      prisma.university.count({ where: { isPartner: true } }),
+      prisma.scholarship.count(),
+      prisma.savedMatch.count(),
+      prisma.application.count(),
+    ]);
+
+    // 2. Fetch application status breakdown separately (Prisma groupBy type is not composable in $transaction tuples)
+    const applicationsByStatus = await prisma.application.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      orderBy: { status: 'asc' },
+    });
+
+    // Map status groups into a readable object { DRAFT: 2, SUBMITTED: 1, ... }
+    const statusBreakdown = Object.fromEntries(
+      applicationsByStatus.map((g) => [g.status, g._count._all])
+    );
+
+    logger.info('Admin analytics fetched');
+    res.status(200).json({
+      success: true,
+      data: {
+        users: {
+          total: totalUsers,
+          verified: verifiedUsers,
+          unverified: totalUsers - verifiedUsers,
+        },
+        universities: {
+          total: totalUniversities,
+          partners: partnerUniversities,
+          nonPartners: totalUniversities - partnerUniversities,
+        },
+        scholarships: {
+          total: totalScholarships,
+        },
+        savedMatches: {
+          total: totalSavedMatches,
+        },
+        applications: {
+          total: totalApplications,
+          byStatus: statusBreakdown,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('getAnalytics error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
 };
 
 // ── POST /universities ────────────────────────────────────────────────────────
