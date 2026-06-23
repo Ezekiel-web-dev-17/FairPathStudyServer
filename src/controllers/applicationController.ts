@@ -118,7 +118,9 @@ export const createApplication = async (req: AuthRequest, res: Response): Promis
       },
     });
 
-    logger.info(`[Applications] Student ${userId} applied to university ${universityId}`);
+    logger.info(
+      `[Applications] Student ${sanitizeForLog(userId)} applied to university ${sanitizeForLog(universityId)}`
+    );
 
     // Notify all admin connections (fire-and-forget, never throws)
     const studentName = [student?.firstName, student?.lastName].filter(Boolean).join(' ') || 'A student';
