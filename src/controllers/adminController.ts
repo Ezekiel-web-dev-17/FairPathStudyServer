@@ -472,7 +472,7 @@ export const getKPISeries = async (req: AuthRequest, res: Response): Promise<voi
     const universityIds = [...new Set(institutionKPI.map((r) => r.universityId))];
     const universities = await prisma.university.findMany({
       where: { id: { in: universityIds } },
-      select: { id: true, name: true, locationCountry: true },
+      select: { id: true, name: true, locationCountry: true, isPartner: true },
     });
     const universityMap = new Map(universities.map((u) => [u.id, u]));
 
@@ -493,6 +493,7 @@ export const getKPISeries = async (req: AuthRequest, res: Response): Promise<voi
         university: universityMap.get(row.universityId) ?? { id: row.universityId, name: 'Unknown', locationCountry: '' },
         status: row.status,
         count: row._count._all,
+        partner: universityMap.get(row.universityId)?.isPartner ?? false,
         admissionRate: total > 0 ? Math.round((accepted / total) * 100) : 0,
       };
     });
