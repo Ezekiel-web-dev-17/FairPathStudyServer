@@ -31,6 +31,10 @@ function getPagination(query: Record<string, unknown>) {
   return { page, limit, skip };
 }
 
+function sanitizeForLog(value: unknown): string {
+  return String(value).replace(/[\r\n]/g, '');
+}
+
 // Valid status values for the allow-list check
 const VALID_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACCEPTED', 'REJECTED', 'DEFERRED'] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -340,7 +344,8 @@ export const updateApplicationStatus = async (req: AuthRequest, res: Response): 
       },
     });
 
-    logger.info(`[Applications] Admin updated application ${id} status: ${existing.status} → ${status}`);
+    const safeLogId = sanitizeForLog(id);
+    logger.info(`[Applications] Admin updated application ${safeLogId} status: ${existing.status} → ${status}`);
 
     // Fire notification (non-blocking)
     const studentName = [existing.applicant?.firstName, existing.applicant?.lastName].filter(Boolean).join(' ') || 'A student';
