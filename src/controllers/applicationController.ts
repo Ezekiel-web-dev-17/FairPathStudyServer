@@ -99,7 +99,7 @@ export const createApplication = async (req: AuthRequest, res: Response): Promis
       data: {
         userId,
         universityId,
-        programId: programId && typeof programId === 'string' ? programId : null,
+        program: programId && typeof programId === 'string' ? programId : '',
         deadline: parsedDeadline,
         status: 'SUBMITTED',
         documents: [],
@@ -108,7 +108,7 @@ export const createApplication = async (req: AuthRequest, res: Response): Promis
         id: true,
         status: true,
         deadline: true,
-        programId: true,
+        program: true,
         createdAt: true,
         university: { select: { id: true, name: true, locationCity: true, locationCountry: true } },
       },
@@ -219,11 +219,11 @@ export const getAdminApplications = async (req: AuthRequest, res: Response): Pro
           id: true,
           status: true,
           deadline: true,
-          programId: true,
+          program: true,
           documents: true,
           createdAt: true,
           updatedAt: true,
-          user: {
+          applicant: {
             select: {
               id: true,
               firstName: true,
@@ -258,7 +258,7 @@ export const getAdminApplications = async (req: AuthRequest, res: Response): Pro
       };
       
       const appId = `APP-${year}-${getNumericSuffix(app.id)}`;
-      const studentName = `${app.user.firstName || ''} ${app.user.lastName || ''}`.trim() || app.user.email;
+      const studentName = `${app.applicant?.firstName || ''} ${app.applicant?.lastName || ''}`.trim() || app.applicant?.email;
       
       // Oct 24, 2023 format
       const formattedDate = new Date(app.createdAt).toLocaleDateString('en-US', {
@@ -271,7 +271,7 @@ export const getAdminApplications = async (req: AuthRequest, res: Response): Pro
         ...app,
         appId,
         studentName,
-        program: app.programId || 'General Program',
+        program: app.program || 'General Program',
         institution: app.university.name,
         date: formattedDate,
         statusLabel: getUiStatusFromDb(app.status),
@@ -319,7 +319,7 @@ export const updateApplicationStatus = async (req: AuthRequest, res: Response): 
         id: true,
         status: true,
         userId: true,
-        user: { select: { firstName: true, lastName: true } },
+        applicant: { select: { firstName: true, lastName: true } },
         university: { select: { name: true } },
       },
     });
@@ -343,7 +343,7 @@ export const updateApplicationStatus = async (req: AuthRequest, res: Response): 
     logger.info(`[Applications] Admin updated application ${id} status: ${existing.status} → ${status}`);
 
     // Fire notification (non-blocking)
-    const studentName = [existing.user?.firstName, existing.user?.lastName].filter(Boolean).join(' ') || 'A student';
+    const studentName = [existing.applicant?.firstName, existing.applicant?.lastName].filter(Boolean).join(' ') || 'A student';
     await createAdminNotification({
       type: 'APPLICATION_STATUS_CHANGED',
       title: 'Application Status Updated',

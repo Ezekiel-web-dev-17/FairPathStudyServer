@@ -24,7 +24,7 @@ describe("Admin Performance Analytics Endpoint Tests", () => {
 
     // Clean prior leftover test records
     await prisma.application.deleteMany({
-      where: { user: { email: { in: ["an_admin_test@fairpath.com", "an_student_test@fairpath.com"] } } }
+      where: { applicant: { email: { in: ["an_admin_test@fairpath.com", "an_student_test@fairpath.com"] } } }
     }).catch(() => {});
 
     await prisma.university.deleteMany({
@@ -84,7 +84,7 @@ describe("Admin Performance Analytics Endpoint Tests", () => {
       data: {
         userId: studentUserId,
         universityId: uniId,
-        programId: "CS",
+        program: "CS",
         deadline: new Date(),
         status: "ACCEPTED",
         documents: [],

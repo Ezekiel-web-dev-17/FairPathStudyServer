@@ -32,7 +32,7 @@ describe("Dashboard and Notification Center Integration Tests", () => {
     }).catch(() => {});
 
     await prisma.application.deleteMany({
-      where: { user: { email: { in: ["dash_student@fairpath.com", "dash_other@fairpath.com"] } } }
+      where: { applicant: { email: { in: ["dash_student@fairpath.com", "dash_other@fairpath.com"] } } }
     }).catch(() => {});
 
     await (prisma as any).notification.deleteMany({

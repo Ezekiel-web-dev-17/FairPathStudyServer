@@ -23,7 +23,6 @@ import {
 } from '../services/tokenService.js';
 import { encryptResetToken, decryptResetToken } from '../utils/crypto.js';
 import { webSocketService } from '../services/websocketService.js';
-import { createAdminNotification } from '../services/notificationService.js';
 
 export const validatePassword = (password: string): string | null => {
   if (password.length < 8) {
@@ -53,7 +52,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
       role
     } = req.body as {fullName: string, email: string, password: string, role?: "ADMIN"};
 
-    if(!fullName || !email || !password || !role){
+    if(!fullName || !email || !password){
       res.status(400).json({
         status: 'error',
         message: 'Full name, email and password are required',
@@ -100,7 +99,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
           firstName,
           lastName,
           passwordHash,
-          role,
+          role: role ?? "STUDENT",
           verificationCode,
           verificationCodeExpires,
         },
@@ -154,14 +153,6 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
         logger.error(`Error creating contact in Resend during registration for ${email}:`, err);
       }
     }
-
-    // Notify admins of new registration (fire-and-forget — never throws)
-    await createAdminNotification({
-      type: 'USER_REGISTERED',
-      title: 'New User Registered',
-      body: `${firstName} ${lastName} created an account. Awaiting email verification.`,
-      metadata: { userId: user.id },
-    });
 
     res.status(201).json({
       status: 'success',
@@ -293,9 +284,41 @@ export const getMe = async (req: AuthRequest, res: Response, _next: NextFunction
   }
 };
 
-export const updateProfile = async (_req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
+export const updateProfile = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
-    res.status(501).json({ error: 'Not implemented' });
+    const {firstName, lastName, email, countryOfOrigin,targetDestinations,academicData,preferences} = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user?.id },
+    });
+    
+    if (!user) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+      return;
+    }
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        firstName,
+        lastName,
+        email,
+        countryOfOrigin,
+        targetDestinations,
+        academicData,
+        preferences,
+      }
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile updated successfully.',
+    });
+
+    return; 
   } catch (error) {
     res.status(500).json({
       status: 'error',

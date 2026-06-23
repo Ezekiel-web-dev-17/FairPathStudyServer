@@ -84,6 +84,11 @@ async function main() {
         'Sloan School of Management',
         'School of Architecture',
       ],
+      programs: [
+        'Computer Science & AI',
+        'Mechanical Engineering',
+        'Business Analytics',
+      ],
       isFeatured: true,
       isPartner: true,
       details: {
@@ -133,6 +138,11 @@ async function main() {
         'School of Engineering',
         'School of Humanities and Sciences',
         'Graduate School of Business',
+      ],
+      programs: [
+        'Computer Science',
+        'Data Science',
+        'Electrical Engineering',
       ],
       isFeatured: true,
       isPartner: true,
@@ -186,6 +196,11 @@ async function main() {
         'Medical Sciences',
         'Social Sciences',
       ],
+      programs: [
+        'Mathematical Sciences',
+        'Philosophy',
+        'Medical Sciences',
+      ],
       isFeatured: false,
       isPartner: false,
       details: {
@@ -237,6 +252,11 @@ async function main() {
         'Faculty of Arts & Science',
         'Rotman School of Management',
       ],
+      programs: [
+        'Applied Science & Engineering',
+        'Faculty of Arts & Science',
+        'Rotman MBA',
+      ],
       isFeatured: true,
       isPartner: false,
       details: {
@@ -283,6 +303,11 @@ async function main() {
       featuredImage:
         'https://lh3.googleusercontent.com/gps-cs-s/APNQkAFjxgSA3JUirLxc4rpjZhv5cx8t-NdRvLbxKh2V-cgudyh2TUJyLn9Q4RGHWeQopG9R23HutlqNoeFzbSsYHaVc_kb0-Ou-7AdcC65-y5eSM7DfnRhP3lNFI7X4JAJRZ9UqbM4x2w=s680-w680-h510-rw',
       departments: [
+        'Faculty of Science',
+        'Melbourne School of Engineering',
+        'Faculty of Business and Economics',
+      ],
+      programs: [
         'Faculty of Science',
         'Melbourne School of Engineering',
         'Faculty of Business and Economics',
@@ -390,7 +415,7 @@ async function main() {
       data: {
         userId: studentUser.id,
         universityId: mitUniv.id,
-        programId: 'Computer Science & AI',
+        program: 'Computer Science & AI',
         status: ApplicationStatus.SUBMITTED,
         deadline: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days
         documents: ['resume_alex.pdf', 'sop_alex.pdf'],

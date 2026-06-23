@@ -8,8 +8,9 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { invalidateCacheByPattern } from '../config/redis.js';
 import { prisma } from '../config/db.js';
+import { ApplicationStatus, Prisma } from '@prisma/client';
 import logger from '../utils/logger.js';
-import { createAdminNotification } from '../services/notificationService.js';
+import { webSocketService } from '../services/websocketService.js';
 
 // ── Whitelist of fields an admin is allowed to set on a university ─────────────
 const UNIVERSITY_WRITABLE_FIELDS = new Set([
@@ -29,11 +30,14 @@ function sanitizeUniversityBody(body: Record<string, unknown>): Record<string, u
 
 // ── GET /admin/analytics ──────────────────────────────────────────────────────
 /**
- * Returns a comprehensive KPI snapshot for the admin dashboard in a single DB round-trip.
- * Matches the data structure expected by the Operations Overview and Analytics pages.
+ * Returns aggregated KPI metrics for the admin dashboard.
+ * Scalar counts are fetched in a single DB transaction; groupBy is run separately
+ * due to Prisma's type-narrowing limitations inside $transaction arrays.
  */
-export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const getAnalytics = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const { skip, limit, status } = req.query as { skip: string, limit: string, status: ApplicationStatus };
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -62,6 +66,13 @@ export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<vo
       prevPlacements,
       totalRejected,
       allApps,
+      // Additional counts for applications sub-object KPI counters
+      totalActiveApplications,
+      acceptedApplications,
+      rejectedApplications,
+      inReviewApplications,
+      verifiedApplications,
+      flaggedApplications,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { isVerified: true } }),
@@ -88,10 +99,10 @@ export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<vo
           _count: { select: { applications: true } },
         },
       }),
-      (prisma as any).notification.findMany({
+      prisma.notification.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
-        select: { id: true, type: true, title: true, body: true, isRead: true, createdAt: true },
+        select: { id: true, type: true, title: true, content: true, read: true, createdAt: true },
       }),
       // Placements (ACCEPTED applications)
       prisma.application.count({ where: { status: 'ACCEPTED' } }),
@@ -106,7 +117,14 @@ export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<vo
             }
           }
         }
-      })
+      }),
+      // Additional counts
+      prisma.application.count({ where: { status: { in: ["IN_REVIEW", "SUBMITTED", "VERIFIED", "NEEDS_DOCUMENT"] } } }),
+      prisma.application.count({ where: { status: "ACCEPTED" } }),
+      prisma.application.count({ where: { status: "REJECTED" } }),
+      prisma.application.count({ where: { status: "IN_REVIEW" } }),
+      prisma.application.count({ where: { status: "VERIFIED" } }),
+      prisma.application.count({ where: { status: "FLAGGED" } }),
     ]);
 
     // Reshape applicationsByStatus into a flat object
@@ -205,8 +223,18 @@ export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<vo
           newLast30Days: newUsersLast30Days,
         },
         applications: {
+          ...(await getApplications(skip, limit, status)),
           total: totalApplications,
           byStatus,
+          activeApplications: totalActiveApplications,
+          accepted: acceptedApplications,
+          rejected: rejectedApplications,
+          inReview: inReviewApplications,
+          verified: verifiedApplications,
+          flagged: flaggedApplications,
+          matchSuccessRate: totalApplications === 0
+            ? 0
+            : Math.round((acceptedApplications / totalApplications) * 100),
           acceptanceRate,
         },
         universities: {
@@ -215,14 +243,21 @@ export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<vo
           featured: featuredUniversities,
         },
         scholarships: { total: totalScholarships },
-        topUniversitiesByApplications: topUniversities.map((u: { id: string; name: string; locationCountry: string; isPartner: boolean; _count: { applications: number } }) => ({
+        topUniversitiesByApplications: topUniversities.map((u) => ({
           id: u.id,
           name: u.name,
           country: u.locationCountry,
           isPartner: u.isPartner,
           applicationCount: u._count.applications,
         })),
-        recentActivity: recentNotifications,
+        recentActivity: recentNotifications.map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          body: n.content,
+          isRead: n.read,
+          createdAt: n.createdAt,
+        })),
         performance: {
           placements: {
             value: totalPlacements.toLocaleString(),
@@ -252,7 +287,7 @@ export const getAnalytics = async (_req: AuthRequest, res: Response): Promise<vo
       },
     });
   } catch (error) {
-    logger.error('getAnalytics error: %o', error);
+    logger.error('getAnalytics error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
@@ -284,15 +319,6 @@ export const createUniversity = async (req: AuthRequest, res: Response): Promise
     const university = await prisma.university.create({ data: data as any });
 
     logger.info(`University created: ${university.id} — ${university.name}`);
-
-    // Notify admins of the new university (fire-and-forget)
-    await createAdminNotification({
-      type: 'UNIVERSITY_CREATED',
-      title: 'University Added',
-      body: `"${university.name}" (${university.locationCity}, ${university.locationCountry}) was added to the platform.`,
-      metadata: { universityId: university.id },
-    });
-
     res.status(201).json({ success: true, message: 'University created successfully', data: university });
   } catch (error) {
     logger.error('createUniversity error:', error);
@@ -329,15 +355,6 @@ export const updateUniversity = async (req: AuthRequest, res: Response): Promise
 
     const updated = await prisma.university.update({ where: { id }, data: data as any });
     logger.info(`University updated: ${id}`);
-
-    // Notify admins (fire-and-forget)
-    await createAdminNotification({
-      type: 'UNIVERSITY_UPDATED',
-      title: 'University Updated',
-      body: `"${updated.name}" record was updated.`,
-      metadata: { universityId: id },
-    });
-
     res.status(200).json({ success: true, message: 'University updated successfully', data: updated });
   } catch (error) {
     logger.error('updateUniversity error:', error);
@@ -360,18 +377,8 @@ export const deleteUniversity = async (req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const deleted = await prisma.university.findUnique({ where: { id }, select: { name: true } });
     await prisma.university.delete({ where: { id } });
     logger.info(`University deleted: ${id}`);
-
-    // Notify admins (fire-and-forget)
-    await createAdminNotification({
-      type: 'UNIVERSITY_DELETED',
-      title: 'University Removed',
-      body: `"${deleted?.name ?? 'A university'}" was removed from the platform.`,
-      metadata: { universityId: id },
-    });
-
     res.status(200).json({ success: true, message: 'University deleted successfully' });
   } catch (error) {
     logger.error('deleteUniversity error:', error);
@@ -384,15 +391,6 @@ export const clearCache = async (_req: AuthRequest, res: Response): Promise<void
   try {
     await invalidateCacheByPattern('cache:*');
     logger.info('Cache cleared by admin');
-
-    // Notify admins (fire-and-forget)
-    await createAdminNotification({
-      type: 'CACHE_CLEARED',
-      title: 'Cache Cleared',
-      body: 'The platform Redis cache was fully invalidated by an admin.',
-      metadata: {},
-    });
-
     res.status(200).json({ success: true, message: 'Cache cleared successfully' });
   } catch (error) {
     logger.error('clearCache error:', error);
@@ -504,6 +502,477 @@ export const getAdminUniversities = async (req: AuthRequest, res: Response): Pro
     });
   } catch (error) {
     logger.error('getAdminUniversities error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+const getApplications = async (skip: string | undefined, limit: string | undefined, status: string | undefined) => {
+  try {
+    const where = {
+      status: {
+        in: status
+          ? [status as ApplicationStatus]
+          : [ApplicationStatus.SUBMITTED, ApplicationStatus.IN_REVIEW, ApplicationStatus.ACCEPTED, ApplicationStatus.REJECTED, ApplicationStatus.FLAGGED],
+      },
+    };
+
+    const [applications, total] = await Promise.all([
+      prisma.application.findMany({
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+          createdAt: true,
+          universityId: true,
+          userId: true,
+          university: {
+            select: {
+              name: true,
+            },
+          },
+          // Schema renamed the relation from 'user' to 'applicant'
+          applicant: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+        take: Number(limit) || 5,
+        skip: Number(skip) || 0,
+        where,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.application.count({ where }),
+    ]);
+
+    // For each application, fetch the applicant's match score for that university
+    const applicationsWithScores = await Promise.all(
+      applications.map(async (app) => {
+        const matchScore = await prisma.universityMatchScore.findUnique({
+          where: { userId_universityId: { userId: app.userId, universityId: app.universityId } },
+          select: { matchScore: true },
+        });
+        const { applicant, ...rest } = app;
+        return { ...rest, user: applicant, matchScore: matchScore ?? null };
+      })
+    );
+
+    return { data: applicationsWithScores, total };
+  } catch (error) {
+    logger.error('getApplications error:', error);
+    throw error;
+  }
+};
+
+export const getKPISeries = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const {timeframe} = req.query;
+    if (!timeframe) {
+      res.status(400).json({ success: false, error: 'Timeframe is required' });
+      return;
+    }
+
+    let where;
+    if (timeframe === 'today') {
+      where = {
+        createdAt: {
+          gte: new Date(new Date().getTime() - 1 * 24 * 60 * 60 * 1000),
+        },
+      };
+    }else if (timeframe === 'week') {
+      where = {
+        createdAt: {
+          gte: new Date(new Date().getTime() - 7 * 24 * 60 * 60 * 1000),
+        },
+      };
+    } else if (timeframe === 'month') {
+      where = {
+        createdAt: {
+          gte: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000),
+        },
+      };
+    } else if (timeframe === 'year') {
+      where = {
+        createdAt: {
+          gte: new Date(new Date().getTime() - 365 * 24 * 60 * 60 * 1000),
+        },
+      };
+    }else if (timeframe === 'custom') {
+      const {startDate, endDate} = req.query;
+      if (!startDate || !endDate) {
+        res.status(400).json({ success: false, error: 'Start date and end date are required' });
+        return;
+      }
+      where = {
+        createdAt: {
+          gte: new Date(startDate as string),
+          lte: new Date(endDate as string),
+        },
+      };
+    }
+
+    const totalApplicants = await prisma.application.count({
+      where: {
+        ...where,
+        status: { not: ApplicationStatus.DRAFT },
+      },
+    });
+    
+    const matchRate = await prisma.universityMatchScore.aggregate({
+      _avg: {
+        matchScore: true,
+      },
+    });
+
+    const partneredUniversities = await prisma.university.count({
+      where: { isPartner: true, ...where }
+    });
+
+    // TODO: add Match Rate and Average Time to Match based on the timeframe(Decision time)
+
+    const gteDate = (where?.createdAt as any)?.gte as Date | undefined;
+    const lteDate = (where?.createdAt as any)?.lte as Date | undefined;
+
+    // Applications per destination country — JOIN required since locationCountry lives on University
+    // $queryRaw used because Prisma groupBy cannot span relations
+    type CountryRow = { locationCountry: string; count: bigint };
+    const rawCountryCounts = await prisma.$queryRaw<CountryRow[]>(Prisma.sql`
+      SELECT u."locationCountry", COUNT(*) AS count
+      FROM "Application" a
+      JOIN "University" u ON a."universityId" = u."id"
+      WHERE 1=1
+        ${gteDate ? Prisma.sql`AND a."createdAt" >= ${gteDate}` : Prisma.sql``}
+        ${lteDate ? Prisma.sql`AND a."createdAt" <= ${lteDate}` : Prisma.sql``}
+      GROUP BY u."locationCountry"
+      ORDER BY count DESC
+    `);
+
+    const applicationsByCountry = rawCountryCounts.map((row) => ({
+      locationCountry: row.locationCountry,
+      count: Number(row.count),
+    }));
+
+    // Parallelise all remaining independent queries — single round-trip
+    const [
+      signedUpUsers,
+      profiledUsers,
+      draftSubmitted,
+      finalMatches,
+      institutionKPI,
+      applicationStatusBreakdown,
+    ] = await Promise.all([
+      prisma.user.count({ where }),
+
+      prisma.userOnboarding.count({
+        where: { isCompleted: true, ...where },
+      }),
+
+      prisma.application.count({
+        where: { status: ApplicationStatus.SUBMITTED, ...where },
+      }),
+
+      prisma.application.count({
+        where: { status: ApplicationStatus.ACCEPTED, ...where },
+      }),
+
+      // Applications grouped by university + status — gives per-institution breakdown
+      prisma.application.groupBy({
+        by: ['universityId', 'status'],
+        _count: { _all: true },
+        where: { ...where },
+      }),
+
+      // Overall status distribution within the timeframe
+      prisma.application.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        where: { ...where },
+      }),
+    ]);
+
+    // Monthly trend — uses $queryRaw + Prisma.sql (parameterized) to safely truncate dates by month
+    // gteDate/lteDate are declared above alongside the country query
+    const gteFilter = gteDate ? Prisma.sql`AND "createdAt" >= ${gteDate}` : Prisma.sql``;
+    const lteFilter = lteDate ? Prisma.sql`AND "createdAt" <= ${lteDate}` : Prisma.sql``;
+
+    type TrendRow = { month: string; submitted: bigint; accepted: bigint };
+    const rawTrend = await prisma.$queryRaw<TrendRow[]>(Prisma.sql`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', "createdAt"), 'YYYY-MM') AS month,
+        COUNT(*) FILTER (WHERE status = 'SUBMITTED') AS submitted,
+        COUNT(*) FILTER (WHERE status = 'ACCEPTED')  AS accepted
+      FROM "Application"
+      WHERE 1=1 ${gteFilter} ${lteFilter}
+      GROUP BY DATE_TRUNC('month', "createdAt")
+      ORDER BY DATE_TRUNC('month', "createdAt") ASC
+    `);
+
+    // Convert BigInt (returned by $queryRaw) to regular numbers for JSON serialisation
+    const applicationTrend = rawTrend.map((row) => ({
+      month: row.month,
+      submitted: Number(row.submitted),
+      accepted: Number(row.accepted),
+    }));
+
+    const universityIds = [...new Set(institutionKPI.map((r) => r.universityId))];
+    const universities = await prisma.university.findMany({
+      where: { id: { in: universityIds } },
+      select: { id: true, name: true, locationCountry: true, isPartner: true },
+    });
+    const universityMap = new Map(universities.map((u) => [u.id, u]));
+
+    // Compute per-university totals and accepted counts for admission rate
+    const totalsPerUniversity = new Map<string, { total: number; accepted: number }>();
+    for (const row of institutionKPI) {
+      const entry = totalsPerUniversity.get(row.universityId) ?? { total: 0, accepted: 0 };
+      entry.total += row._count._all;
+      if (row.status === ApplicationStatus.ACCEPTED) {
+        entry.accepted += row._count._all;
+      }
+      totalsPerUniversity.set(row.universityId, entry);
+    }
+
+    const institutionPerformance = institutionKPI.map((row) => {
+      const { total, accepted } = totalsPerUniversity.get(row.universityId) ?? { total: 0, accepted: 0 };
+      return {
+        university: universityMap.get(row.universityId) ?? { id: row.universityId, name: 'Unknown', locationCountry: '' },
+        status: row.status,
+        count: row._count._all,
+        partner: universityMap.get(row.universityId)?.isPartner ?? false,
+        admissionRate: total > 0 ? Math.round((accepted / total) * 100) : 0,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalApplicants,
+        averageMatchScore: matchRate._avg.matchScore ?? 0,
+        partneredUniversities,
+        applicationsByCountry,
+        signedUpUsers,
+        profiledUsers,
+        draftSubmitted,
+        finalMatches,
+        applicationStatusBreakdown,
+        institutionPerformance,
+        applicationTrend,
+      },
+    });
+  } catch (error) {
+    logger.error('getKPISeries error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+}
+
+
+
+// ── GET /admin/active-admins (Check online/offline status of administrators) ──
+export const getActiveAdmins = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    const formattedAdmins = admins.map((admin) => ({
+      ...admin,
+      status: webSocketService.getConnectionCount(admin.id) > 0 ? 'online' : 'offline',
+    }));
+
+    res.status(200).json({ success: true, data: formattedAdmins });
+  } catch (error) {
+    logger.error('getActiveAdmins error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── GET /admin/notifications (List notifications for authenticated admin) ─────
+export const getAdminNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit as string, 10) || 20);
+    const skip = (page - 1) * limit;
+    const unreadOnly = req.query.unreadOnly === 'true';
+
+    const where: any = { userId };
+    if (unreadOnly) {
+      where.read = false;
+    }
+
+    const [notifications, total] = await prisma.$transaction([
+      prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.notification.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: notifications.map((n) => ({
+        id: n.id,
+        userId: n.userId,
+        title: n.title,
+        content: n.content,
+        body: n.content, // legacy support
+        type: n.type,
+        read: n.read,
+        isRead: n.read, // legacy support
+        metadata: {}, // legacy support
+        createdAt: n.createdAt,
+        updatedAt: n.updatedAt,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    logger.error('getAdminNotifications error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── PUT /admin/notifications/:id/read (Mark specific notification as read) ───
+export const markAdminNotificationRead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params;
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({ success: false, error: 'Notification ID must be a single string' });
+      return;
+    }
+
+    const notification = await prisma.notification.findUnique({
+      where: { id },
+    });
+
+    if (!notification) {
+      res.status(404).json({ success: false, error: 'Notification not found' });
+      return;
+    }
+
+    if (notification.userId !== userId) {
+      res.status(403).json({ success: false, error: 'Forbidden' });
+      return;
+    }
+
+    const updated = await prisma.notification.update({
+      where: { id },
+      data: { read: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: updated.id,
+        userId: updated.userId,
+        title: updated.title,
+        content: updated.content,
+        body: updated.content, // legacy support
+        type: updated.type,
+        read: updated.read,
+        isRead: updated.read, // legacy support
+        metadata: {}, // legacy support
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      },
+    });
+  } catch (error) {
+    logger.error('markAdminNotificationRead error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── PUT /admin/notifications/read-all (Mark all notifications as read) ────────
+export const markAllAdminNotificationsRead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const result = await prisma.notification.updateMany({
+      where: { userId, read: false },
+      data: { read: true },
+    });
+
+    res.status(200).json({ success: true, message: `Marked ${result.count} notification(s) as read` });
+  } catch (error) {
+    logger.error('markAllAdminNotificationsRead error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── GET /admin/notifications/unread-count ─────────────────────────────────────
+export const getAdminUnreadCount = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const count = await prisma.notification.count({ where: { userId, read: false } });
+    res.status(200).json({ success: true, data: { count } });
+  } catch (error) {
+    logger.error('getAdminUnreadCount error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── DELETE /admin/notifications/:id (Delete a single notification) ────────────
+export const deleteAdminNotification = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+    const { id } = req.params;
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({ success: false, error: 'Invalid notification ID' });
+      return;
+    }
+
+    const existing = await prisma.notification.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ success: false, error: 'Notification not found' });
+      return;
+    }
+
+    if (existing.userId !== userId) {
+      res.status(403).json({ success: false, error: 'Forbidden' });
+      return;
+    }
+
+    await prisma.notification.delete({ where: { id } });
+    logger.info(`[Notifications] Admin deleted notification: ${id}`);
+    res.status(200).json({ success: true, message: 'Notification deleted' });
+  } catch (error) {
+    logger.error('deleteAdminNotification error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };

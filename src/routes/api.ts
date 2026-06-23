@@ -1,10 +1,23 @@
 import { Router } from 'express';
 import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout, forgotPassword, resetPassword, refreshToken } from '../controllers/authController.js';
-import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches } from '../controllers/universityController.js';
+import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches, getAllUniversityScores } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications, getAdminOperations, getAdminKPIs } from '../controllers/dashboardController.js';
-import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities } from '../controllers/adminController.js';
-import { getNotifications, getUnreadCount, markAsRead, markAllRead, deleteNotification } from '../controllers/notificationController.js';
+import {
+  getAnalytics,
+  createUniversity,
+  updateUniversity,
+  deleteUniversity,
+  clearCache,
+  getAdminUniversities,
+  getKPISeries,
+  getActiveAdmins,
+  getAdminNotifications,
+  markAdminNotificationRead,
+  markAllAdminNotificationsRead,
+  getAdminUnreadCount,
+  deleteAdminNotification
+} from '../controllers/adminController.js';
 import { createApplication, getAdminApplications, updateApplicationStatus } from '../controllers/applicationController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';
@@ -53,25 +66,29 @@ router.get('/admin/kpis', authenticateJWT, requireAdmin, getAdminKPIs);
 router.get('/admin/universities', authenticateJWT, requireAdmin, getAdminUniversities);
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
+router.get('/admin/active-admins', authenticateJWT, requireAdmin, getActiveAdmins);
 
 // ── Admin Applications Management ──
 router.get('/admin/applications', authenticateJWT, requireAdmin, getAdminApplications);
 router.patch('/admin/applications/:id/status', authenticateJWT, requireAdmin, updateApplicationStatus);
 
 // ── Admin Notification Center ──
-// NOTE: /read-all must come before /:id/read to avoid route shadowing
-router.get('/admin/notifications', authenticateJWT, requireAdmin, getNotifications);
-router.get('/admin/notifications/unread-count', authenticateJWT, requireAdmin, getUnreadCount);
-router.patch('/admin/notifications/read-all', authenticateJWT, requireAdmin, markAllRead);
-router.patch('/admin/notifications/:id/read', authenticateJWT, requireAdmin, markAsRead);
-router.delete('/admin/notifications/:id', authenticateJWT, requireAdmin, deleteNotification);
+router.get('/admin/notifications', authenticateJWT, requireAdmin, getAdminNotifications);
+router.get('/admin/notifications/unread-count', authenticateJWT, requireAdmin, getAdminUnreadCount);
+router.put('/admin/notifications/read-all', authenticateJWT, requireAdmin, markAllAdminNotificationsRead);
+router.patch('/admin/notifications/read-all', authenticateJWT, requireAdmin, markAllAdminNotificationsRead);
+router.put('/admin/notifications/:id/read', authenticateJWT, requireAdmin, markAdminNotificationRead);
+router.patch('/admin/notifications/:id/read', authenticateJWT, requireAdmin, markAdminNotificationRead);
+router.delete('/admin/notifications/:id', authenticateJWT, requireAdmin, deleteAdminNotification);
 
 // ── Onboarding & Matches ──
 router.get('/onboarding', authenticateJWT, getOnboarding);
 router.post('/onboarding', authenticateJWT, saveOnboarding);
 router.get('/matches', authenticateJWT, getUserMatches);
+router.get('/matches/all', authenticateJWT, getAllUniversityScores);
 
-// ── Cache Clearing ──
+// —— Cache clearing ──
 router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
+router.get('/admin/kpi', authenticateJWT, requireAdmin, getKPISeries);
 
 export default router;

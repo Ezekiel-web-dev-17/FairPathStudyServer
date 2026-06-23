@@ -1,222 +1,270 @@
-/**
- * Dashboard Controller
- * --------------------
- * Serves student-facing dashboard data.
- *
- * Security notes:
- * - All endpoints require authenticateJWT; user ID is read from the verified token, never from request body.
- * - Ownership is enforced at the DB query level (every query scopes to req.user.id).
- * - Pagination inputs are clamped to prevent memory/DoS abuse.
- * - matchType is validated against a hard-coded allow-list to prevent enumeration attacks.
- */
+// Dashboard & Favourites Controllers
+// - getDashboardSummary: GET    /dashboard/summary — Core widget metrics
+// - getFavourites:       GET    /favourites         — List saved universities/scholarships
+// - addFavourite:        POST   /favourites         — Save a university or scholarship
+// - deleteFavourite:     DELETE /favourites/:id     — Remove from favourites
+// - getApplications:     GET    /applications       — List user's applications
 
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import logger from '../utils/logger.js';
 
-/** Safe pagination defaults */
-const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 50;
-
-function getPagination(query: Record<string, unknown>) {
-  const page = Math.max(1, parseInt(String(query.page ?? '1'), 10) || 1);
-  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(String(query.limit ?? String(DEFAULT_LIMIT)), 10) || DEFAULT_LIMIT));
-  const skip = (page - 1) * limit;
-  return { page, limit, skip };
-}
+// ── Allowed match types (allow-list to prevent injection into DB queries) ──────
+const VALID_MATCH_TYPES = new Set(['UNIVERSITY', 'SCHOLARSHIP']);
 
 // ── GET /dashboard/summary ────────────────────────────────────────────────────
 /**
- * Returns headline metrics for the authenticated student's dashboard:
- * profile completion, saved matches, applications count, onboarding status,
- * and count of recommended scholarships available.
+ * Returns core widget metrics for the authenticated user's dashboard:
+ * - Total saved matches (favourites)
+ * - Total applications and breakdown by status
+ * - Upcoming application deadline (nearest future deadline)
  */
-export const getDashboardSummary = async (req: AuthRequest, res: Response): Promise<void> => {
+const maskEmail = (email: string): string => {
+  const parts = email.split('@');
+  if (parts.length !== 2) return '***';
+  const [local, domain] = parts;
+  if (local.length <= 2) {
+    return `${local}***@${domain}`;
+  }
+  return `${local.slice(0, 2)}***@${domain}`;
+};
+
+export const getDashboardSummary = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
 
-    const [user, savedMatchesCount, applicationsCount, onboarding, scholarshipCount] = await prisma.$transaction([
+    // Fetch counts, onboarding status, and user info in parallel
+    const [
+      [savedMatchesCount, nextDeadlineApp],
+      applicationsByStatus,
+      onboarding,
+      user
+    ] = await Promise.all([
+      prisma.$transaction([
+        // 1. Total saved matches for this user
+        prisma.savedMatch.count({ where: { userId } }),
+
+        // 2. Nearest upcoming deadline (status not REJECTED or ACCEPTED)
+        prisma.application.findFirst({
+          where: {
+            userId,
+            deadline: { gte: new Date() },
+            status: { notIn: ['REJECTED', 'ACCEPTED'] },
+          },
+          orderBy: { deadline: 'asc' },
+          select: {
+            id: true,
+            deadline: true,
+            status: true,
+            university: {
+              select: { name: true, locationCity: true, locationCountry: true },
+            },
+          },
+        }),
+      ]),
+
+      // 3. Applications grouped by status (separate call — required by Prisma type inference)
+      prisma.application.groupBy({
+        by: ['status'],
+        where: { userId },
+        _count: { _all: true },
+        orderBy: { status: 'asc' },
+      }),
+
+      // 4. User Onboarding details
+      prisma.userOnboarding.findUnique({
+        where: { userId }
+      }),
+
+      // 5. User details for PII email masking
       prisma.user.findUnique({
         where: { id: userId },
-        select: {
-          firstName: true,
-          lastName: true,
-          email: true,
-          profileCompletionPercent: true,
-          role: true,
-        },
-      }),
-      prisma.savedMatch.count({ where: { userId } }),
-      prisma.application.count({ where: { userId } }),
-      prisma.userOnboarding.findUnique({ where: { userId }, select: { isCompleted: true } }),
-      prisma.scholarship.count(),
+        select: { id: true, firstName: true, lastName: true, email: true, role: true }
+      })
     ]);
 
-    if (!user) {
-      res.status(404).json({ success: false, error: 'User not found' });
-      return;
-    }
+    // Compute total applications count from grouped results
+    const applicationsCount = applicationsByStatus.reduce((sum, g) => sum + g._count._all, 0);
+
+    // Map status groups into a readable object { DRAFT: 2, SUBMITTED: 1, ... }
+    const statusBreakdown = Object.fromEntries(
+      applicationsByStatus.map((g) => [g.status, g._count._all])
+    );
+
+    const onboardingCompleted = onboarding?.isCompleted ?? false;
+    const maskedEmail = user ? maskEmail(user.email) : '***';
+    const userPayload = user ? { ...user, email: maskedEmail } : null;
 
     res.status(200).json({
       success: true,
       data: {
-        user: {
-          firstName: user.firstName,
-          lastName: user.lastName,
-          // Mask email: only show domain for privacy (e.g. "***@gmail.com")
-          email: user.email.replace(/^[^@]+/, '***'),
-          role: user.role,
-        },
-        profileCompletionPercent: user.profileCompletionPercent,
-        onboardingCompleted: onboarding?.isCompleted ?? false,
         savedMatchesCount,
         applicationsCount,
-        availableScholarshipsCount: scholarshipCount,
+        applicationsByStatus: statusBreakdown,
+        nextDeadline: nextDeadlineApp ?? null,
+        onboardingCompleted,
+        user: userPayload
       },
     });
   } catch (error) {
-    logger.error('getDashboardSummary error: %o', error);
+    logger.error('getDashboardSummary error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
-// ── GET /favourites ───────────────────────────────────────────────────────────
+// ── GET /favourites ────────────────────────────────────────────────────────────
 /**
- * Returns the authenticated user's paginated saved matches,
- * hydrated with the relevant university or scholarship data.
+ * Returns all saved matches (favourites) for the authenticated user.
+ * Each match is enriched with the full University or Scholarship record it references.
  */
-export const getFavourites = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getFavourites = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
 
-    const { page, limit, skip } = getPagination(req.query as Record<string, unknown>);
+    // Fetch all saved matches for this user
+    const savedMatches = await prisma.savedMatch.findMany({
+      where: { userId },
+      orderBy: { savedAt: 'desc' },
+    });
 
-    const [total, matches] = await prisma.$transaction([
-      prisma.savedMatch.count({ where: { userId } }),
-      prisma.savedMatch.findMany({
-        where: { userId },
-        skip,
-        take: limit,
-        orderBy: { savedAt: 'desc' },
-      }),
-    ]);
-
-    // Hydrate match details in a single pass
-    const universityIds = matches
+    // Collect IDs per type so we can batch-load entities
+    const universityIds = savedMatches
       .filter((m) => m.matchType === 'UNIVERSITY')
       .map((m) => m.matchId);
-
-    const scholarshipIds = matches
+    const scholarshipIds = savedMatches
       .filter((m) => m.matchType === 'SCHOLARSHIP')
       .map((m) => m.matchId);
 
-    const [universities, scholarships] = await prisma.$transaction([
-      prisma.university.findMany({
-        where: { id: { in: universityIds } },
-        select: { id: true, name: true, locationCity: true, locationCountry: true, featuredImage: true, rankingGlobal: true, isPartner: true },
-      }),
-      prisma.scholarship.findMany({
-        where: { id: { in: scholarshipIds } },
-        select: { id: true, title: true, provider: true, amountType: true, amountValue: true, deadline: true, category: true },
-      }),
+    // Parallel fetch of referenced entities
+    const [universities, scholarships] = await Promise.all([
+      universityIds.length > 0
+        ? prisma.university.findMany({ where: { id: { in: universityIds } } })
+        : Promise.resolve([]),
+      scholarshipIds.length > 0
+        ? prisma.scholarship.findMany({ where: { id: { in: scholarshipIds } } })
+        : Promise.resolve([]),
     ]);
 
-    const uniMap = new Map(universities.map((u) => [u.id, u]));
-    const scholMap = new Map(scholarships.map((s) => [s.id, s]));
+    // Build lookup maps for O(1) access
+    const universityMap = new Map(universities.map((u) => [u.id, u]));
+    const scholarshipMap = new Map(scholarships.map((s) => [s.id, s]));
 
-    const hydratedMatches = matches.map((match) => ({
-      id: match.id,
-      matchType: match.matchType,
-      savedAt: match.savedAt,
-      details: match.matchType === 'UNIVERSITY' ? uniMap.get(match.matchId) ?? null : scholMap.get(match.matchId) ?? null,
-    }));
+    // Enrich each saved match with the referenced entity data
+    const enriched = savedMatches.map((match) => {
+      const entity =
+        match.matchType === 'UNIVERSITY'
+          ? universityMap.get(match.matchId)
+          : scholarshipMap.get(match.matchId);
 
-    res.status(200).json({
-      success: true,
-      data: hydratedMatches,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      return {
+        id: match.id,
+        matchType: match.matchType,
+        matchId: match.matchId,
+        savedAt: match.savedAt,
+        // entity may be undefined if it was deleted after being saved
+        data: entity ?? null,
+        details: entity ?? null,
+      };
     });
+
+    res.status(200).json({ success: true, data: enriched });
   } catch (error) {
-    logger.error('getFavourites error: %o', error);
+    logger.error('getFavourites error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
 // ── POST /favourites ──────────────────────────────────────────────────────────
 /**
- * Saves a university or scholarship to the user's favourites.
- * Validates matchType against an allow-list and verifies the target record exists.
+ * Saves a university or scholarship as a favourite for the authenticated user.
+ * Body: { matchType: 'UNIVERSITY' | 'SCHOLARSHIP', matchId: string }
+ *
+ * Security: userId is sourced exclusively from the verified JWT — never from the request body.
  */
-export const addFavourite = async (req: AuthRequest, res: Response): Promise<void> => {
+export const addFavourite = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
 
-    const { matchType, matchId } = req.body as { matchType?: string; matchId?: string };
+    const { matchType, matchId } = req.body as { matchType: string; matchId: string };
 
-    // Validate allow-listed matchType
-    if (!matchType || !['UNIVERSITY', 'SCHOLARSHIP'].includes(matchType)) {
-      res.status(400).json({ success: false, error: 'matchType must be one of: UNIVERSITY, SCHOLARSHIP' });
+    // 1. Validate matchType against a strict allow-list
+    if (!matchType || !VALID_MATCH_TYPES.has(matchType)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid matchType. Must be UNIVERSITY or SCHOLARSHIP',
+      });
       return;
     }
 
-    if (!matchId || typeof matchId !== 'string') {
-      res.status(400).json({ success: false, error: 'matchId is required and must be a string' });
+    // 2. Validate matchId is a non-empty string
+    if (!matchId || typeof matchId !== 'string' || matchId.trim().length === 0) {
+      res.status(400).json({ success: false, error: 'matchId is required' });
       return;
     }
 
-    // Verify the target record actually exists before saving
+    const sanitizedMatchId = matchId.trim();
+
+    // 3. Verify the referenced entity actually exists in the database
+    let entityExists = false;
     if (matchType === 'UNIVERSITY') {
-      const uni = await prisma.university.findUnique({ where: { id: matchId }, select: { id: true } });
-      if (!uni) {
-        res.status(404).json({ success: false, error: 'University not found' });
-        return;
-      }
+      const uni = await prisma.university.findUnique({ where: { id: sanitizedMatchId }, select: { id: true } });
+      entityExists = !!uni;
     } else {
-      const schol = await prisma.scholarship.findUnique({ where: { id: matchId }, select: { id: true } });
-      if (!schol) {
-        res.status(404).json({ success: false, error: 'Scholarship not found' });
-        return;
-      }
+      const schol = await prisma.scholarship.findUnique({ where: { id: sanitizedMatchId }, select: { id: true } });
+      entityExists = !!schol;
     }
 
-    const saved = await prisma.savedMatch.create({
-      data: { userId, matchType, matchId },
+    if (!entityExists) {
+      res.status(404).json({
+        success: false,
+        error: `${matchType === 'UNIVERSITY' ? 'University' : 'Scholarship'} not found`,
+      });
+      return;
+    }
+
+    // 4. Create the saved match — the DB has a @@unique([userId, matchType, matchId]) constraint
+    const savedMatch = await prisma.savedMatch.create({
+      data: { userId, matchType, matchId: sanitizedMatchId },
     });
 
-    res.status(201).json({ success: true, message: 'Saved to favourites', data: { id: saved.id, matchType, matchId, savedAt: saved.savedAt } });
+    logger.info(`Favourite added: user=${userId}, type=${matchType}, entity=${sanitizedMatchId}`);
+    res.status(201).json({ success: true, message: 'Favourite added successfully', data: savedMatch });
   } catch (error: any) {
-    // Unique constraint means already saved
+    // Handle unique constraint violation (P2002) — user already saved this match
     if (error?.code === 'P2002') {
-      res.status(409).json({ success: false, error: 'Already in favourites' });
+      res.status(409).json({ success: false, error: 'Already saved to favourites' });
       return;
     }
-    logger.error('addFavourite error: %o', error);
+    logger.error('addFavourite error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
-// ── DELETE /favourites/:id ────────────────────────────────────────────────────
+// ── DELETE /favourites/:id ─────────────────────────────────────────────────────
 /**
- * Removes a saved match. Ownership is verified — users can only delete their own records.
+ * Removes a saved match by its ID.
+ *
+ * Security: Performs an ownership check (savedMatch.userId === req.user.id) to prevent
+ * IDOR — a user cannot delete another user's favourites.
  */
-export const deleteFavourite = async (req: AuthRequest, res: Response): Promise<void> => {
+export const deleteFavourite = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
 
@@ -226,88 +274,73 @@ export const deleteFavourite = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
-    // Ownership check: scope to userId so users can never delete another user's record
-    const existing = await prisma.savedMatch.findFirst({ where: { id, userId } });
-    if (!existing) {
-      res.status(404).json({ success: false, error: 'Favourite not found or access denied' });
+    // Find the record first to perform ownership validation
+    const savedMatch = await prisma.savedMatch.findUnique({ where: { id } });
+
+    // Validate existence and ownership — return 404 for security / ownership mismatch
+    if (!savedMatch || savedMatch.userId !== userId) {
+      res.status(404).json({ success: false, error: 'Favourite not found' });
       return;
     }
 
     await prisma.savedMatch.delete({ where: { id } });
 
-    res.status(200).json({ success: true, message: 'Removed from favourites' });
+    logger.info(`Favourite removed: id=${id}, user=${userId}`);
+    res.status(200).json({ success: true, message: 'Favourite removed successfully' });
   } catch (error) {
-    logger.error('deleteFavourite error: %o', error);
+    logger.error('deleteFavourite error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
-// ── GET /applications ─────────────────────────────────────────────────────────
+// ── GET /applications ──────────────────────────────────────────────────────────
 /**
- * Returns the authenticated student's paginated application history
- * with university name and current status.
+ * Returns all applications submitted by the authenticated user,
+ * including university name and location for display.
  */
-export const getApplications = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getApplications = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
     const userId = req.user?.id;
     if (!userId) {
-      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
 
-    const { page, limit, skip } = getPagination(req.query as Record<string, unknown>);
-    const statusFilter = req.query.status as string | undefined;
-
-    // Validate status filter against the enum allow-list
-    const validStatuses = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACCEPTED', 'REJECTED', 'DEFERRED'];
-    const whereClause = {
-      userId,
-      ...(statusFilter && validStatuses.includes(statusFilter) ? { status: statusFilter as any } : {}),
-    };
-
-    const [total, applications] = await prisma.$transaction([
-      prisma.application.count({ where: whereClause }),
-      prisma.application.findMany({
-        where: whereClause,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          status: true,
-          deadline: true,
-          programId: true,
-          documents: true,
-          createdAt: true,
-          updatedAt: true,
-          university: {
-            select: {
-              id: true,
-              name: true,
-              locationCity: true,
-              locationCountry: true,
-              featuredImage: true,
-            },
+    const applications = await prisma.application.findMany({
+      where: { userId },
+      orderBy: { deadline: 'asc' },
+      select: {
+        id: true,
+        status: true,
+        deadline: true,
+        program: true,
+        documents: true,
+        createdAt: true,
+        updatedAt: true,
+        university: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            locationCity: true,
+            locationCountry: true,
+            featuredImage: true,
           },
         },
-      }),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: applications,
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
     });
+
+    res.status(200).json({ success: true, data: applications });
   } catch (error) {
-    logger.error('getApplications error: %o', error);
+    logger.error('getApplications error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 
-// ── GET /admin/operations ───────────────────────────────────────────────────
+// ── GET /admin/operations ──────────────────────────────────────────────────────
 /**
- * Returns operations overview KPIs and recent applications history.
- * Supports filtering by status (READY, PENDING, NEEDS DOCUMENTS).
+ * Returns operations overview and recent applications list for the Admin Portal.
+ * Supports status querying via query parameters.
  */
 export const getAdminOperations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -345,7 +378,7 @@ export const getAdminOperations = async (req: AuthRequest, res: Response): Promi
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
-        user: {
+        applicant: {
           select: {
             id: true,
             firstName: true,
@@ -366,14 +399,14 @@ export const getAdminOperations = async (req: AuthRequest, res: Response): Promi
       }
     });
 
-    const userIds = dbApps.map((app) => app.user.id);
+    const userIds = dbApps.map((app) => app.applicant.id);
     const onboardings = await prisma.userOnboarding.findMany({
       where: { userId: { in: userIds } }
     });
     const onboardingMap = new Map(onboardings.map((o) => [o.userId, o]));
 
     const mappedApplications = dbApps.map((app) => {
-      const onboarding = onboardingMap.get(app.user.id);
+      const onboarding = onboardingMap.get(app.applicant.id);
       const uni = app.university;
 
       // Matching score logic (simplified/standardised to match main matches endpoint)
@@ -414,7 +447,7 @@ export const getAdminOperations = async (req: AuthRequest, res: Response): Promi
 
       return {
         id: app.id,
-        studentName: `${app.user.firstName || ''} ${app.user.lastName || ''}`.trim() || app.user.email,
+        studentName: `${app.applicant.firstName || ''} ${app.applicant.lastName || ''}`.trim() || app.applicant.email,
         targetedUniv: uni.name,
         status,
         matchScore,
@@ -710,5 +743,3 @@ export const getAdminKPIs = async (req: AuthRequest, res: Response): Promise<voi
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
-
-

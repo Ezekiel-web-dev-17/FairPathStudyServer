@@ -15,22 +15,12 @@ enum ApplicationStatus {
   DRAFT
   SUBMITTED
   IN_REVIEW
-  ACCEPTED
+  VERIFIED
   REJECTED
+  FLAGGED
+  NEEDS_DOCUMENT
+  ACCEPTED
   DEFERRED
-}
-
-enum NotificationType {
-  USER_REGISTERED
-  USER_ONBOARDING_COMPLETED
-  APPLICATION_SUBMITTED
-  APPLICATION_STATUS_CHANGED
-  UNIVERSITY_CREATED
-  UNIVERSITY_UPDATED
-  UNIVERSITY_DELETED
-  CACHE_CLEARED
-  SCHOLARSHIP_DEADLINE_APPROACHING
-  SYSTEM_ALERT
 }
 
 model User {
@@ -53,6 +43,8 @@ model User {
   updatedAt                DateTime      @updatedAt
   savedMatches             SavedMatch[]
   applications             Application[]
+  universityMatchScores    UniversityMatchScore[]
+  notifications            Notification[]
 }
 
 model University {
@@ -72,12 +64,14 @@ model University {
   description     String        @db.Text
   featuredImage   String?
   departments     String[]
+  programs        String[]
   details         Json?         // Holds structured JSON for Academics, Campus Life, Admissions
   isFeatured      Boolean       @default(false)
   isPartner       Boolean       @default(false)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   applications    Application[]
+  matchScores     UniversityMatchScore[]
 }
 
 model Scholarship {
@@ -108,15 +102,32 @@ model SavedMatch {
 model Application {
   id           String            @id @default(uuid())
   userId       String
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicant    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   universityId String
   university   University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  programId    String?           // The course or department applied to
+  program      String           // The course or department applied to
   status       ApplicationStatus @default(DRAFT)
   deadline     DateTime
   documents    String[]          // Array of file URLs/references
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+}
+
+// Persisted match score for a user–university pair.
+// Recalculated on every call to GET /matches or GET /matches/all.
+model UniversityMatchScore {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  matchScore   Int
+  reasons      String[]
+  warnings     String[]
+  calculatedAt DateTime   @default(now())
+
+  @@unique([userId, universityId])
+  @@index([userId])
 }
 
 model UserOnboarding {
@@ -158,15 +169,13 @@ model UserOnboarding {
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  type      NotificationType
-  title     String
-  body      String           @db.Text
-  metadata  Json?            // Contextual payload (userId, universityId, etc.) — never contains sensitive data
-  isRead    Boolean          @default(false)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-
-  @@index([isRead])
-  @@index([createdAt])
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  content    String
+  type       String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

@@ -26,7 +26,7 @@ describe("Admin Applications Management Endpoint Tests", () => {
 
     // Clean prior leftover test records
     await prisma.application.deleteMany({
-      where: { user: { email: { in: ["app_admin_test@fairpath.com", "app_student_test@fairpath.com"] } } }
+      where: { applicant: { email: { in: ["app_admin_test@fairpath.com", "app_student_test@fairpath.com"] } } }
     }).catch(() => {});
 
     // Create unique test users
@@ -108,7 +108,7 @@ describe("Admin Applications Management Endpoint Tests", () => {
       data: {
         userId: studentUserId,
         universityId: uniId1,
-        programId: "MSc Computer Science",
+        program: "MSc Computer Science",
         deadline: new Date("2026-11-24T00:00:00.000Z"),
         status: "IN_REVIEW",
         documents: [],
@@ -121,7 +121,7 @@ describe("Admin Applications Management Endpoint Tests", () => {
       data: {
         userId: studentUserId,
         universityId: uniId2,
-        programId: "MBA Global Business",
+        program: "MBA Global Business",
         deadline: new Date("2026-12-15T00:00:00.000Z"),
         status: "SUBMITTED",
         documents: [],

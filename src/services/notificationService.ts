@@ -1,67 +1,70 @@
-/**
- * Notification Service
- * --------------------
- * Creates a persisted Notification record in the DB and simultaneously
- * broadcasts a real-time WebSocket event to all connected ADMIN clients.
- *
- * Security notes:
- * - metadata must NEVER contain passwords, tokens, or PII beyond display-safe identifiers.
- * - Notification creation failures are swallowed so they never break the originating action.
- */
-
-export type NotificationType =
-  | 'USER_REGISTERED'
-  | 'USER_ONBOARDING_COMPLETED'
-  | 'APPLICATION_SUBMITTED'
-  | 'APPLICATION_STATUS_CHANGED'
-  | 'UNIVERSITY_CREATED'
-  | 'UNIVERSITY_UPDATED'
-  | 'UNIVERSITY_DELETED'
-  | 'CACHE_CLEARED'
-  | 'SCHOLARSHIP_DEADLINE_APPROACHING'
-  | 'SYSTEM_ALERT';
-
 import { prisma } from '../config/db.js';
 import { webSocketService } from './websocketService.js';
 import logger from '../utils/logger.js';
 
-export interface NotificationPayload {
-  type: NotificationType;
-  title: string;
-  body: string;
-  /** Safe, non-sensitive contextual data (e.g. resource IDs, counts). Never include credentials. */
-  metadata?: Record<string, unknown>;
-}
-
 /**
- * Creates a `Notification` DB row and broadcasts it via WebSocket to all ADMIN sessions.
- * Never throws — failures are logged but silently absorbed so calling code is never interrupted.
+ * Creates and persists a notification in the database,
+ * and pushes it via WebSocket in real time if the recipient is connected.
  */
-export async function createAdminNotification(payload: NotificationPayload): Promise<void> {
+export const createNotification = async (
+  userId: string,
+  title: string,
+  content: string,
+  type: string = 'INFO'
+) => {
   try {
-    const notification = await (prisma as any).notification.create({
+    // 1. Persist notification in database
+    const notification = await prisma.notification.create({
       data: {
-        type: payload.type,
-        title: payload.title,
-        body: payload.body,
-        metadata: payload.metadata as any,
-        isRead: false,
+        userId,
+        title,
+        content,
+        type,
       },
     });
 
-    // Real-time broadcast to all ADMIN WebSocket connections
-    webSocketService.broadcastToRole('ADMIN', 'notification:new', {
-      id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      body: notification.body,
-      metadata: notification.metadata,
-      createdAt: notification.createdAt,
+    // 2. Real-time dispatch via WebSocket if active connection exists
+    webSocketService.sendMessageToUser(userId, 'new-notification', notification);
+
+    return notification;
+  } catch (error) {
+    logger.error('Failed to create/send notification: %o', error);
+    throw error;
+  }
+};
+
+/**
+ * Convenience helper to save and dispatch a notification to all administrators.
+ */
+export const notifyAllAdmins = async (
+  title: string,
+  content: string,
+  type: string = 'INFO'
+) => {
+  try {
+    // Query all users with ADMIN role
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN' },
+      select: { id: true },
     });
 
-    logger.info(`[NotificationService] Created notification: type=${payload.type}, id=${notification.id}`);
+    // Create notifications in parallel
+    await Promise.all(
+      admins.map((admin) => createNotification(admin.id, title, content, type))
+    );
   } catch (error) {
-    // Fail-safe: notification errors must never propagate to callers
-    logger.error('[NotificationService] Failed to create notification: %o', error);
+    logger.error('Failed to notify all admins: %o', error);
   }
-}
+};
+
+/**
+ * Backwards-compatible helper matching legacy notificationService signature.
+ */
+export const createAdminNotification = async (params: {
+  type: string;
+  title: string;
+  body: string;
+  metadata?: Record<string, any>;
+}) => {
+  await notifyAllAdmins(params.title, params.body, params.type);
+};

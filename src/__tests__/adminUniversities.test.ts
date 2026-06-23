@@ -27,7 +27,7 @@ describe("Admin Universities Management Endpoint Tests", () => {
 
     // Clean prior leftover test records
     await prisma.application.deleteMany({
-      where: { user: { email: { in: ["uni_admin_test@fairpath.com", "uni_student_test@fairpath.com"] } } }
+      where: { applicant: { email: { in: ["uni_admin_test@fairpath.com", "uni_student_test@fairpath.com"] } } }
     }).catch(() => {});
 
     await prisma.university.deleteMany({
@@ -137,7 +137,7 @@ describe("Admin Universities Management Endpoint Tests", () => {
       data: {
         userId: studentUserId,
         universityId: uniIdActive1,
-        programId: "Informatics",
+        program: "Informatics",
         deadline: new Date("2026-11-24T00:00:00.000Z"),
         status: "ACCEPTED", // Match rate will be 100% since 1 accepted application
         documents: [],
