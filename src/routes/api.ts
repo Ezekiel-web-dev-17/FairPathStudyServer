@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout, forgotPassword, resetPassword, refreshToken } from '../controllers/authController.js';
-import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches } from '../controllers/universityController.js';
+import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches, getAllUniversityScores } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
-import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities } from '../controllers/adminController.js';
+import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities, getKPISeries } from '../controllers/adminController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';
 import { cacheMiddleware, inValidateCacheMiddleware } from '../middleware/cache.js';
@@ -53,8 +53,10 @@ router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUnive
 router.get('/onboarding', authenticateJWT, getOnboarding);
 router.post('/onboarding', authenticateJWT, saveOnboarding);
 router.get('/matches', authenticateJWT, getUserMatches);
+router.get('/matches/all', authenticateJWT, getAllUniversityScores);
 
 // —— Cache clearing ──
 router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
+router.get('/admin/kpi', authenticateJWT, requireAdmin, getKPISeries);
 
 export default router;
