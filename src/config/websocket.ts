@@ -142,6 +142,15 @@ export const initWebSocketServer = (server: http.Server): WebSocketServer => {
     webSocketService.registerConnection(user.id, ws);
     logger.info(`WebSocket connection established for user: ${user.email} (${user.role})`);
 
+    // Broadcast online status to fellow admins if connecting user is an ADMIN
+    if (user.role === 'ADMIN') {
+      webSocketService.broadcastToRole('ADMIN', 'admin-presence', {
+        userId: user.id,
+        email: user.email,
+        status: 'online',
+      });
+    }
+
     // Setup ping/pong heartbeat to detect dead connections
     ws.on('pong', () => {
       ws.isAlive = true;
@@ -154,11 +163,29 @@ export const initWebSocketServer = (server: http.Server): WebSocketServer => {
     ws.on('close', (code, reason) => {
       webSocketService.removeConnection(user.id, ws);
       logger.info(`WebSocket connection closed for user ${user.email}. Code: ${code}, Reason: ${reason}`);
+
+      // Broadcast offline status if no active connections remain for this admin
+      if (user.role === 'ADMIN' && webSocketService.getConnectionCount(user.id) === 0) {
+        webSocketService.broadcastToRole('ADMIN', 'admin-presence', {
+          userId: user.id,
+          email: user.email,
+          status: 'offline',
+        });
+      }
     });
 
     ws.on('error', (err) => {
       webSocketService.removeConnection(user.id, ws);
       logger.error(`WebSocket connection error for user ${user.email}: %o`, err);
+
+      // Broadcast offline status if no active connections remain for this admin
+      if (user.role === 'ADMIN' && webSocketService.getConnectionCount(user.id) === 0) {
+        webSocketService.broadcastToRole('ADMIN', 'admin-presence', {
+          userId: user.id,
+          email: user.email,
+          status: 'offline',
+        });
+      }
     });
   });
 

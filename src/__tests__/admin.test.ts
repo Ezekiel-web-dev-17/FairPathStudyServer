@@ -470,4 +470,97 @@ describe("Admin Dashboard & KPI Integration Tests", () => {
       expect(persisted.length).toBeGreaterThan(0);
     });
   });
+
+  // ─────────────────────────────────────────────────────
+  // Admin Notifications & Real-Time Presence Tests
+  // ─────────────────────────────────────────────────────
+  describe("Admin Notifications & Active Admins", () => {
+    let testNotificationId: string;
+
+    beforeAll(async () => {
+      // Seed a test notification for the admin
+      const notif = await prisma.notification.create({
+        data: {
+          userId: adminUserId,
+          title: "Test Notification",
+          content: "This is a test notification content",
+          type: "INFO",
+        },
+      });
+      testNotificationId = notif.id;
+    });
+
+    afterAll(async () => {
+      // Clean up notifications
+      await prisma.notification.deleteMany({
+        where: { userId: adminUserId },
+      });
+    });
+
+    it("should get active admins listing with status", async () => {
+      const response = await request(app)
+        .get("/api/v1/admin/active-admins")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      const activeAdmin = response.body.data.find((a: any) => a.id === adminUserId);
+      expect(activeAdmin).toBeDefined();
+      expect(activeAdmin.email).toBe("admin_kpi_test@fairpath.com");
+      expect(activeAdmin.status).toBeDefined();
+    });
+
+    it("should get admin notifications list", async () => {
+      const response = await request(app)
+        .get("/api/v1/admin/notifications")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      const notif = response.body.data.find((n: any) => n.id === testNotificationId);
+      expect(notif).toBeDefined();
+      expect(notif.read).toBe(false);
+    });
+
+    it("should mark a notification as read", async () => {
+      const response = await request(app)
+        .put(`/api/v1/admin/notifications/${testNotificationId}/read`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.read).toBe(true);
+
+      const check = await prisma.notification.findUnique({
+        where: { id: testNotificationId },
+      });
+      expect(check?.read).toBe(true);
+    });
+
+    it("should mark all notifications as read", async () => {
+      // Create another unread notification
+      await prisma.notification.create({
+        data: {
+          userId: adminUserId,
+          title: "Second Notification",
+          content: "Another notification",
+          type: "INFO",
+        },
+      });
+
+      const response = await request(app)
+        .put("/api/v1/admin/notifications/read-all")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+
+      const remainingUnread = await prisma.notification.count({
+        where: { userId: adminUserId, read: false },
+      });
+      expect(remainingUnread).toBe(0);
+    });
+  });
 });

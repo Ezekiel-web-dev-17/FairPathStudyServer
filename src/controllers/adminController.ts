@@ -10,6 +10,7 @@ import { invalidateCacheByPattern } from '../config/redis.js';
 import { prisma } from '../config/db.js';
 import { ApplicationStatus, Prisma } from '@prisma/client';
 import logger from '../utils/logger.js';
+import { webSocketService } from '../services/websocketService.js';
 
 // ── Whitelist of fields an admin is allowed to set on a university ─────────────
 const UNIVERSITY_WRITABLE_FIELDS = new Set([
@@ -560,6 +561,132 @@ export const getAdminApplications = async (req: AuthRequest, res: Response): Pro
     });
   } catch (error) {
     logger.error('getAdminApplications error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── GET /admin/active-admins (Check online/offline status of administrators) ──
+export const getActiveAdmins = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    const formattedAdmins = admins.map((admin) => ({
+      ...admin,
+      status: webSocketService.getConnectionCount(admin.id) > 0 ? 'online' : 'offline',
+    }));
+
+    res.status(200).json({ success: true, data: formattedAdmins });
+  } catch (error) {
+    logger.error('getActiveAdmins error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── GET /admin/notifications (List notifications for authenticated admin) ─────
+export const getAdminNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit as string, 10) || 20);
+    const skip = (page - 1) * limit;
+
+    const [notifications, total] = await prisma.$transaction([
+      prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.notification.count({ where: { userId } }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: notifications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    logger.error('getAdminNotifications error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── PUT /admin/notifications/:id/read (Mark specific notification as read) ───
+export const markAdminNotificationRead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params;
+    if (!id || typeof id !== 'string') {
+      res.status(400).json({ success: false, error: 'Notification ID must be a single string' });
+      return;
+    }
+
+    const notification = await prisma.notification.findUnique({
+      where: { id },
+    });
+
+    if (!notification) {
+      res.status(404).json({ success: false, error: 'Notification not found' });
+      return;
+    }
+
+    if (notification.userId !== userId) {
+      res.status(403).json({ success: false, error: 'Forbidden' });
+      return;
+    }
+
+    const updated = await prisma.notification.update({
+      where: { id },
+      data: { read: true },
+    });
+
+    res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    logger.error('markAdminNotificationRead error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── PUT /admin/notifications/read-all (Mark all notifications as read) ────────
+export const markAllAdminNotificationsRead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+      return;
+    }
+
+    await prisma.notification.updateMany({
+      where: { userId, read: false },
+      data: { read: true },
+    });
+
+    res.status(200).json({ success: true, message: 'All notifications marked as read' });
+  } catch (error) {
+    logger.error('markAllAdminNotificationsRead error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };

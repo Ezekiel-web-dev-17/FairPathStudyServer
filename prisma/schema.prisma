@@ -43,6 +43,7 @@ model User {
   savedMatches             SavedMatch[]
   applications             Application[]
   universityMatchScores    UniversityMatchScore[]
+  notifications            Notification[]
 }
 
 model University {
@@ -164,4 +165,16 @@ model UserOnboarding {
 
   @@index([userId])
   @@map("user_preferences")
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  content    String
+  type       String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/db.js';
 import logger from '../utils/logger.js';
+import { notifyAllAdmins } from '../services/notificationService.js';
 
 interface UserOnboardingData {
   fullName?: string | null;
@@ -238,6 +239,13 @@ export const saveOnboarding = async (req: AuthRequest, res: Response): Promise<v
 
         return onboarding;
       });
+
+      // Trigger notification to all admins
+      notifyAllAdmins(
+        'Student Onboarding Completed',
+        `Student ${dataToSave.fullName || 'Anonymous'} has completed onboarding.`,
+        'SUCCESS'
+      ).catch(err => logger.error('Onboarding notification error: %o', err));
     } else {
       // Just save the draft
       userOnboarding = await prisma.userOnboarding.upsert({

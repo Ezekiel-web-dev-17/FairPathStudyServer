@@ -3,7 +3,7 @@ import { register, login, getMe, updateProfile, verifyEmail, unsubscribe, logout
 import { getUniversities, getFeaturedUniversities, getFeaturedUniversitiesSlug, getUniversityBySlug, getUserMatches, getAllUniversityScores } from '../controllers/universityController.js';
 import { getScholarships, getRecommendedScholarships } from '../controllers/scholarshipController.js';
 import { getDashboardSummary, getFavourites, addFavourite, deleteFavourite, getApplications } from '../controllers/dashboardController.js';
-import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities, getKPISeries } from '../controllers/adminController.js';
+import { getAnalytics, createUniversity, updateUniversity, deleteUniversity, clearCache, getAdminUniversities, getKPISeries, getActiveAdmins, getAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead } from '../controllers/adminController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';
 import { cacheMiddleware, inValidateCacheMiddleware } from '../middleware/cache.js';
@@ -48,6 +48,10 @@ router.get('/admin/analytics', authenticateJWT, requireAdmin, getAnalytics);
 router.get('/admin/universities', authenticateJWT, requireAdmin, getAdminUniversities);
 router.post('/admin/universities', authenticateJWT, requireAdmin, createUniversity);
 router.put('/admin/universities/:id', authenticateJWT, requireAdmin, updateUniversity);
+router.get('/admin/active-admins', authenticateJWT, requireAdmin, getActiveAdmins);
+router.get('/admin/notifications', authenticateJWT, requireAdmin, getAdminNotifications);
+router.put('/admin/notifications/read-all', authenticateJWT, requireAdmin, markAllAdminNotificationsRead);
+router.put('/admin/notifications/:id/read', authenticateJWT, requireAdmin, markAdminNotificationRead);
 
 // ── Onboarding & Matches ──
 router.get('/onboarding', authenticateJWT, getOnboarding);
