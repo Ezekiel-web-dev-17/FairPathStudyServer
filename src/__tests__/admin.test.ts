@@ -116,6 +116,7 @@ describe("Admin Dashboard & KPI Integration Tests", () => {
       data: {
         userId: studentUserId,
         universityId: testUniversityId,
+        program: 'Computer Science',
         status: ApplicationStatus.SUBMITTED,
         deadline: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days from now
       },

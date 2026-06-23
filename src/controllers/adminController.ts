@@ -270,7 +270,6 @@ const getApplications = async (skip: string | undefined, limit: string | undefin
       },
     };
 
-    // Run the paginated fetch and the total count in parallel with the same filter
     const [applications, total] = await Promise.all([
       prisma.application.findMany({
         select: {
@@ -285,7 +284,8 @@ const getApplications = async (skip: string | undefined, limit: string | undefin
               name: true,
             },
           },
-          user: {
+          // Schema renamed the relation from 'user' to 'applicant'
+          applicant: {
             select: {
               firstName: true,
               lastName: true,
@@ -307,7 +307,8 @@ const getApplications = async (skip: string | undefined, limit: string | undefin
           where: { userId_universityId: { userId: app.userId, universityId: app.universityId } },
           select: { matchScore: true },
         });
-        return { ...app, matchScore: matchScore ?? null };
+        const { applicant, ...rest } = app;
+        return { ...rest, user: applicant, matchScore: matchScore ?? null };
       })
     );
 
@@ -517,3 +518,47 @@ export const getKPISeries = async (req: AuthRequest, res: Response): Promise<voi
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }
+
+// ── GET /admin/applications (paginated application list) ────────────────────
+export const getAdminApplications = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page  as string, 10) || 1);
+    const limit = Math.min(50, parseInt(req.query.limit as string, 10) || 8);
+    const skip  = (page - 1) * limit;
+    const status = req.query.status as ApplicationStatus | undefined;
+
+    const where = status ? { status } : {};
+
+    const [apps, total] = await prisma.$transaction([
+      prisma.application.findMany({
+        skip,
+        take: limit,
+        where,
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          program: true,
+          university: { select: { name: true, slug: true } },
+          applicant: { select: { firstName: true, lastName: true } },
+          updatedAt: true,
+          status: true,
+        },
+      }),
+      prisma.application.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: apps.map(({ applicant, ...rest }) => ({ ...rest, user: applicant })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    logger.error('getAdminApplications error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};

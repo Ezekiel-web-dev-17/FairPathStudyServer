@@ -62,6 +62,7 @@ model University {
   description     String        @db.Text
   featuredImage   String?
   departments     String[]
+  programs        String[]
   details         Json?         // Holds structured JSON for Academics, Campus Life, Admissions
   isFeatured      Boolean       @default(false)
   isPartner       Boolean       @default(false)
@@ -99,10 +100,10 @@ model SavedMatch {
 model Application {
   id           String            @id @default(uuid())
   userId       String
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicant    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   universityId String
   university   University        @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  programId    String?           // The course or department applied to
+  program      String           // The course or department applied to
   status       ApplicationStatus @default(DRAFT)
   deadline     DateTime
   documents    String[]          // Array of file URLs/references
