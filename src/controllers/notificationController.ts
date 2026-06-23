@@ -146,7 +146,8 @@ export const deleteNotification = async (req: AuthRequest, res: Response): Promi
     }
 
     await (prisma as any).notification.delete({ where: { id } });
-    logger.info(`[Notifications] Admin deleted notification: ${id}`);
+    const sanitizedIdForLog = id.replace(/[\r\n]/g, '');
+    logger.info(`[Notifications] Admin deleted notification: ${sanitizedIdForLog}`);
     res.status(200).json({ success: true, message: 'Notification deleted' });
   } catch (error) {
     logger.error('deleteNotification error: %o', error);
