@@ -15,8 +15,11 @@ enum ApplicationStatus {
   DRAFT
   SUBMITTED
   IN_REVIEW
-  ACCEPTED
+  VERIFIED
   REJECTED
+  FLAGGED
+  NEEDS_DOCUMENT
+  ACCEPTED
 }
 
 model User {
@@ -39,6 +42,7 @@ model User {
   updatedAt                DateTime      @updatedAt
   savedMatches             SavedMatch[]
   applications             Application[]
+  universityMatchScores    UniversityMatchScore[]
 }
 
 model University {
@@ -64,6 +68,7 @@ model University {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   applications    Application[]
+  matchScores     UniversityMatchScore[]
 }
 
 model Scholarship {
@@ -103,6 +108,23 @@ model Application {
   documents    String[]          // Array of file URLs/references
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+}
+
+// Persisted match score for a user–university pair.
+// Recalculated on every call to GET /matches or GET /matches/all.
+model UniversityMatchScore {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  matchScore   Int
+  reasons      String[]
+  warnings     String[]
+  calculatedAt DateTime   @default(now())
+
+  @@unique([userId, universityId])
+  @@index([userId])
 }
 
 model UserOnboarding {
