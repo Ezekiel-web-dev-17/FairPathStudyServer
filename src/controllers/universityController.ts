@@ -290,9 +290,139 @@ export const getUserMatches = async (req: AuthRequest, res: Response): Promise<v
 
     // Sort matching results descending
     matchedList.sort((a, b) => b.matchScore - a.matchScore);
+
+    // Persist scores to the database (upsert per user-university pair)
+    await Promise.all(
+      matchedList.map(({ university, matchScore, reasons, warnings }) =>
+        prisma.universityMatchScore.upsert({
+          where: { userId_universityId: { userId, universityId: university.id } },
+          create: { userId, universityId: university.id, matchScore, reasons, warnings },
+          update: { matchScore, reasons, warnings, calculatedAt: new Date() },
+        })
+      )
+    );
+
     res.status(200).json({ success: true, data: matchedList });
   } catch (error) {
     logger.error('getUserMatches error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// ── GET /matches/all ──────────────────────────────────────────────────────────
+/**
+ * Returns a match score for EVERY university in the database (not just partners).
+ * Uses the same four-factor weighted algorithm as getUserMatches:
+ *   A. Budget Alignment      — 30 pts
+ *   B. Major Availability    — 30 pts
+ *   C. Destination Country   — 20 pts
+ *   D. English Proficiency   — 20 pts
+ *
+ * Results are sorted by matchScore descending.
+ * Requires: authenticated user + completed onboarding.
+ */
+export const getAllUniversityScores = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, error: 'Unauthorized: Missing user credentials' });
+      return;
+    }
+
+    // 1. Require onboarding to be complete — scores are meaningless without a profile
+    const onboarding = await prisma.userOnboarding.findUnique({ where: { userId } });
+    if (!onboarding) {
+      res.status(400).json({ success: false, error: 'Please complete onboarding first.' });
+      return;
+    }
+
+    // 2. Fetch ALL universities (no isPartner filter)
+    const universities = await prisma.university.findMany({
+      orderBy: { rankingGlobal: 'asc' },
+    });
+
+    // 3. Score each university using the same algorithm as getUserMatches
+    const scoredList = universities.map((uni) => {
+      let score = 0;
+      const reasons: string[] = [];
+      const warnings: string[] = [];
+
+      // A. Budget Match (30 pts)
+      if (onboarding.annualBudget) {
+        const userBudget = Number(onboarding.annualBudget);
+        if (userBudget >= uni.tuitionMax) {
+          score += 30;
+          reasons.push('Budget Aligned');
+        } else if (userBudget >= uni.tuitionMin) {
+          score += 15;
+          reasons.push('Partially Budget Aligned');
+        } else {
+          warnings.push('Exceeds Budget');
+        }
+      }
+
+      // B. Major Match (30 pts)
+      if (onboarding.intendedMajor) {
+        const hasMajor = uni.departments.some((dept) =>
+          dept.toLowerCase().includes(onboarding.intendedMajor!.toLowerCase())
+        );
+        if (hasMajor) {
+          score += 30;
+          reasons.push('Offering Intended Major');
+        }
+      }
+
+      // C. Destination Country Match (20 pts)
+      if (onboarding.destinations && onboarding.destinations.length > 0) {
+        const destMatch = onboarding.destinations.some(
+          (dest) => dest.toLowerCase() === uni.locationCountry.toLowerCase()
+        );
+        if (destMatch) {
+          score += 20;
+          reasons.push('Located in Preferred Destination');
+        }
+      }
+
+      // D. English Proficiency (20 pts)
+      if (onboarding.englishScore) {
+        const isMet = isEnglishRequirementMet(onboarding.englishTest, onboarding.englishScore, 6.5);
+        if (isMet) {
+          score += 20;
+          reasons.push('English Requirements Met');
+        } else {
+          warnings.push('Higher Language Scores Recommended');
+        }
+      }
+
+      return {
+        university: uni,
+        matchScore: score === 0 ? 50 : score, // baseline when no profile data matches
+        reasons,
+        warnings,
+      };
+    });
+
+    // Sort descending by score
+    scoredList.sort((a, b) => b.matchScore - a.matchScore);
+
+    // Persist scores to the database (upsert per user-university pair)
+    await Promise.all(
+      scoredList.map(({ university, matchScore, reasons, warnings }) =>
+        prisma.universityMatchScore.upsert({
+          where: { userId_universityId: { userId, universityId: university.id } },
+          create: { userId, universityId: university.id, matchScore, reasons, warnings },
+          update: { matchScore, reasons, warnings, calculatedAt: new Date() },
+        })
+      )
+    );
+
+    res.status(200).json({
+      success: true,
+      total: scoredList.length,
+      data: scoredList,
+    });
+  } catch (error) {
+    logger.error('getAllUniversityScores error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };

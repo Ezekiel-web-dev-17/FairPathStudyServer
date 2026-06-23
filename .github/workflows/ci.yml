@@ -183,6 +183,7 @@ jobs:
       DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/fairpath_study?schema=public"
       REDIS_URL: "redis://localhost:6380"
       JWT_SECRET: ${{ secrets.JWT_SECRET || 'ci-test-secret-do-not-use-in-prod-abc123xyz' }}
+      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET || 'ci-test-refresh-secret-do-not-use-in-prod-abc123xyz' }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'ci-session-secret-do-not-use-in-prod-abc123xyz' }}
       COOKIE_MAX_AGE: "86400000"
       NODE_ENV: "test"
