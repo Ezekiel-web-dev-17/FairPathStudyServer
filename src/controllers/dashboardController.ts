@@ -286,7 +286,7 @@ export const getApplications = async (req: AuthRequest, res: Response, _next: Ne
         id: true,
         status: true,
         deadline: true,
-        programId: true,
+        program: true,
         documents: true,
         createdAt: true,
         updatedAt: true,
