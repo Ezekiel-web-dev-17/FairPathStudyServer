@@ -89,6 +89,6 @@ router.get('/matches/all', authenticateJWT, getAllUniversityScores);
 
 // —— Cache clearing ──
 router.post('/admin/cache/clear', authenticateJWT, requireAdmin, clearCache);
-router.get('/admin/kpi', authenticateJWT, requireAdmin, getKPISeries);
+router.get('/admin/kpi', authRateLimitMiddleware, authenticateJWT, requireAdmin, getKPISeries);
 
 export default router;
