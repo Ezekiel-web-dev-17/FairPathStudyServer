@@ -23,9 +23,6 @@ describe("Token Service and Redis Blacklisting Unit Tests", () => {
   });
 
   afterAll(async () => {
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   });
 
   describe("Token Generation and Verification", () => {

@@ -10,6 +10,7 @@ const config = {
         '^(\\.{1,2}/.*)\\.js$': '$1',
     },
     setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+    globalTeardown: '<rootDir>/jest.teardown.js',
     testPathIgnorePatterns: ['/node_modules/', '<rootDir>/dist/'],
     modulePathIgnorePatterns: ['<rootDir>/dist/'],
 };

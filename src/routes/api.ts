@@ -12,12 +12,14 @@ import {
   getAdminUniversities,
   getKPISeries,
   getActiveAdmins,
+} from '../controllers/adminController.js';
+import {
   getAdminNotifications,
   markAdminNotificationRead,
   markAllAdminNotificationsRead,
   getAdminUnreadCount,
-  deleteAdminNotification
-} from '../controllers/adminController.js';
+  deleteAdminNotification,
+} from '../controllers/notificationController.js';
 import { createApplication, getAdminApplications, updateApplicationStatus } from '../controllers/applicationController.js';
 import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 import { authRateLimitMiddleware } from '../middleware/rateLimit.js';

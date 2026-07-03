@@ -1,5 +1,5 @@
 import app from "../app.js";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 import { runCleanupProcess } from "../scripts/cleanupInactiveUsers.js";
 
@@ -85,11 +85,6 @@ describe("Inactive User Cleanup Integration Tests", () => {
     }).catch(() => {});
 
     // Disconnect pools and Redis to allow Jest to exit cleanly
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   });
 
   it("should successfully execute the cleanup process and apply time-windowed policies correctly", async () => {

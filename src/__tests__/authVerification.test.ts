@@ -2,7 +2,7 @@ import app from "../app.js";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../config/config.js";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 
 describe("User Auth Verification Flow Tests", () => {
@@ -24,11 +24,6 @@ describe("User Auth Verification Flow Tests", () => {
     }).catch(() => {});
 
     // Disconnect pools and Redis to allow Jest to exit cleanly
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   });
 
   describe("Complete Verification Flow", () => {

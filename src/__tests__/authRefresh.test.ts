@@ -1,7 +1,7 @@
 import app from "../app.js";
 import request from "supertest";
 import bcrypt from "bcryptjs";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 
 describe("Refresh Token Rotation and Access Token Blacklisting Tests", () => {
@@ -40,11 +40,6 @@ describe("Refresh Token Rotation and Access Token Blacklisting Tests", () => {
       where: { email: testEmail },
     }).catch(() => {});
 
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   }, 30000);
 
   describe("Refresh Token Rotation", () => {

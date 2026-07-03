@@ -1,7 +1,7 @@
 import app from "../app.js";
 import request from "supertest";
 import bcrypt from "bcryptjs";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 import { encryptResetToken } from "../utils/crypto.js";
 
@@ -23,11 +23,6 @@ describe("User Password Recovery and Reset Flow Tests", () => {
     }).catch(() => {});
 
     // Disconnect pools and Redis to allow Jest to exit cleanly
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   }, 30000);
 
   describe("Forgot Password Flow", () => {

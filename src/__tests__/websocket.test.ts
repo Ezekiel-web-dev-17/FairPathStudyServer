@@ -82,16 +82,11 @@ describe('WebSocket Server Integration Tests', () => {
     // Disconnect DB client and pool
     try {
       const { prisma, pool } = await import('../config/db.js');
-      await prisma.$disconnect();
-      await pool.end();
     } catch (err) {
       // Ignore
     }
 
     // Disconnect Redis
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   });
 
   afterEach(async () => {

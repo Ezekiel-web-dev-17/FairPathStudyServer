@@ -36,7 +36,7 @@ function sanitizeForLog(value: unknown): string {
 }
 
 // Valid status values for the allow-list check
-const VALID_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'ACCEPTED', 'REJECTED', 'DEFERRED'] as const;
+const VALID_STATUSES = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'VERIFIED', 'REJECTED', 'FLAGGED', 'NEEDS_DOCUMENT', 'ACCEPTED', 'DEFERRED'] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
 
 // ── POST /applications ────────────────────────────────────────────────────────
@@ -71,6 +71,10 @@ export const createApplication = async (req: AuthRequest, res: Response): Promis
     const parsedDeadline = new Date(deadline);
     if (isNaN(parsedDeadline.getTime())) {
       res.status(400).json({ success: false, error: 'deadline must be a valid date string' });
+      return;
+    }
+    if (parsedDeadline <= new Date()) {
+      res.status(400).json({ success: false, error: 'deadline must be a future date' });
       return;
     }
 

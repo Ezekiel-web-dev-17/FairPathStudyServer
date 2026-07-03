@@ -2,7 +2,7 @@ import app from "../app.js";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../config/config.js";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 import bcrypt from "bcryptjs";
 
@@ -138,11 +138,6 @@ describe("Universities Integration Tests", () => {
       .catch(() => {});
 
     // Close connection pools
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   });
 
   // ─────────────────────────────────────────────────────

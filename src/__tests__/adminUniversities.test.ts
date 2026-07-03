@@ -2,7 +2,7 @@ import app from "../app.js";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../config/config.js";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 import bcrypt from "bcryptjs";
 
@@ -164,11 +164,6 @@ describe("Admin Universities Management Endpoint Tests", () => {
       where: { id: { in: [adminUserId, studentUserId] } },
     }).catch(() => {});
 
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   }, 30000);
 
   it("should return detailed formatted universities card layout matching screenshot for admins", async () => {

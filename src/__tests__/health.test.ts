@@ -1,17 +1,12 @@
 import app from "../app.js";
 import request from "supertest";
 import { PORT } from "../config/config.js";
-import { prisma, pool } from "../config/db.js";
+import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 
 describe("ESM Import & Config Check", () => {
   afterAll(async () => {
     // Close database connection pool and Redis client to release event loop handles
-    await prisma.$disconnect();
-    await pool.end();
-    if (redisClient.isOpen) {
-      await redisClient.quit();
-    }
   });
 
   it("should successfully import PORT and verify it is defined", () => {

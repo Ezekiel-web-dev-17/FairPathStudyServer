@@ -32,16 +32,16 @@ function getPagination(query: Record<string, unknown>) {
  * Returns paginated notifications for admins, newest first.
  * Optional query: ?unreadOnly=true to filter unread only.
  */
-export const getNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getAdminNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { page, limit, skip } = getPagination(req.query as Record<string, unknown>);
     const unreadOnly = req.query.unreadOnly === 'true';
 
-    const where = unreadOnly ? { isRead: false } : {};
+    const where = unreadOnly ? { read: false } : {};
 
     const [total, notifications] = await prisma.$transaction([
-      (prisma as any).notification.count({ where }),
-      (prisma as any).notification.findMany({
+      prisma.notification.count({ where }),
+      prisma.notification.findMany({
         where,
         skip,
         take: limit,
@@ -50,9 +50,8 @@ export const getNotifications = async (req: AuthRequest, res: Response): Promise
           id: true,
           type: true,
           title: true,
-          body: true,
-          metadata: true,
-          isRead: true,
+          content: true,
+          read: true,
           createdAt: true,
         },
       }),
@@ -64,7 +63,7 @@ export const getNotifications = async (req: AuthRequest, res: Response): Promise
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
-    logger.error('getNotifications error: %o', error);
+    logger.error('getAdminNotifications error: %o', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
@@ -73,12 +72,12 @@ export const getNotifications = async (req: AuthRequest, res: Response): Promise
 /**
  * Returns the count of unread notifications — used by the frontend badge indicator.
  */
-export const getUnreadCount = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const getAdminUnreadCount = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const count = await (prisma as any).notification.count({ where: { isRead: false } });
+    const count = await prisma.notification.count({ where: { read: false } });
     res.status(200).json({ success: true, data: { count } });
   } catch (error) {
-    logger.error('getUnreadCount error: %o', error);
+    logger.error('getAdminUnreadCount error: %o', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
@@ -87,7 +86,7 @@ export const getUnreadCount = async (_req: AuthRequest, res: Response): Promise<
 /**
  * Marks a single notification as read.
  */
-export const markAsRead = async (req: AuthRequest, res: Response): Promise<void> => {
+export const markAdminNotificationRead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     if (!id || typeof id !== 'string') {
@@ -95,16 +94,16 @@ export const markAsRead = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    const existing = await (prisma as any).notification.findUnique({ where: { id }, select: { id: true } });
+    const existing = await prisma.notification.findUnique({ where: { id }, select: { id: true } });
     if (!existing) {
       res.status(404).json({ success: false, error: 'Notification not found' });
       return;
     }
 
-    await (prisma as any).notification.update({ where: { id }, data: { isRead: true } });
+    await prisma.notification.update({ where: { id }, data: { read: true } });
     res.status(200).json({ success: true, message: 'Notification marked as read' });
   } catch (error) {
-    logger.error('markAsRead error: %o', error);
+    logger.error('markAdminNotificationRead error: %o', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
@@ -113,16 +112,16 @@ export const markAsRead = async (req: AuthRequest, res: Response): Promise<void>
 /**
  * Marks all unread notifications as read in a single operation.
  */
-export const markAllRead = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const markAllAdminNotificationsRead = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await (prisma as any).notification.updateMany({
-      where: { isRead: false },
-      data: { isRead: true },
+    const result = await prisma.notification.updateMany({
+      where: { read: false },
+      data: { read: true },
     });
 
     res.status(200).json({ success: true, message: `Marked ${result.count} notification(s) as read` });
   } catch (error) {
-    logger.error('markAllRead error: %o', error);
+    logger.error('markAllAdminNotificationsRead error: %o', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
@@ -131,7 +130,7 @@ export const markAllRead = async (_req: AuthRequest, res: Response): Promise<voi
 /**
  * Hard-deletes a single notification record.
  */
-export const deleteNotification = async (req: AuthRequest, res: Response): Promise<void> => {
+export const deleteAdminNotification = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     if (!id || typeof id !== 'string') {
@@ -139,18 +138,18 @@ export const deleteNotification = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    const existing = await (prisma as any).notification.findUnique({ where: { id }, select: { id: true } });
+    const existing = await prisma.notification.findUnique({ where: { id }, select: { id: true } });
     if (!existing) {
       res.status(404).json({ success: false, error: 'Notification not found' });
       return;
     }
 
-    await (prisma as any).notification.delete({ where: { id } });
+    await prisma.notification.delete({ where: { id } });
     const sanitizedIdForLog = id.replace(/[\r\n]/g, '');
     logger.info(`[Notifications] Admin deleted notification: ${sanitizedIdForLog}`);
     res.status(200).json({ success: true, message: 'Notification deleted' });
   } catch (error) {
-    logger.error('deleteNotification error: %o', error);
+    logger.error('deleteAdminNotification error: %o', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
