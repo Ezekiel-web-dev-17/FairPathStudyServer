@@ -7,7 +7,7 @@ import { redisClient } from "../config/redis.js";
 describe("ESM Import & Config Check", () => {
   afterAll(async () => {
     // Close database connection pool and Redis client to release event loop handles
-  });
+  }, 30000);
 
   it("should successfully import PORT and verify it is defined", () => {
     expect(PORT).toBeDefined();

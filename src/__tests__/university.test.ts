@@ -117,7 +117,7 @@ describe("Universities Integration Tests", () => {
     await prisma.university
       .deleteMany({ where: { slug: "antigravity-uni" } })
       .catch(() => {});
-  });
+  }, 30000);
 
   // ─────────────────────────────────────────────────────
   // afterAll: tear down everything we created
@@ -138,7 +138,7 @@ describe("Universities Integration Tests", () => {
       .catch(() => {});
 
     // Close connection pools
-  });
+  }, 30000);
 
   // ─────────────────────────────────────────────────────
   // GET /universities

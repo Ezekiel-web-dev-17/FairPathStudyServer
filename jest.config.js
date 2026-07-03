@@ -11,6 +11,9 @@ const config = {
     },
     setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
     globalTeardown: '<rootDir>/jest.teardown.js',
+    // Run suites serially — integration tests share a single DB instance and
+    // collide when run in parallel (unique constraint violations, pool races).
+    runInBand: true,
     testPathIgnorePatterns: ['/node_modules/', '<rootDir>/dist/'],
     modulePathIgnorePatterns: ['<rootDir>/dist/'],
 };

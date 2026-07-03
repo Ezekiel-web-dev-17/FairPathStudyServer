@@ -20,10 +20,10 @@ describe("Token Service and Redis Blacklisting Unit Tests", () => {
     if (!redisClient.isOpen) {
       await redisClient.connect();
     }
-  });
+  }, 30000);
 
   afterAll(async () => {
-  });
+  }, 30000);
 
   describe("Token Generation and Verification", () => {
     it("should generate a valid access token and successfully verify it", () => {
