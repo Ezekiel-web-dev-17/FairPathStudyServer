@@ -248,7 +248,7 @@ describe("Dashboard and Notification Center Integration Tests", () => {
         .set("Authorization", `Bearer ${studentToken}`)
         .send({
           universityId: testUniId,
-          deadline: new Date().toISOString(),
+          deadline: new Date(Date.now() + 86400000 * 30).toISOString(),
         })
         .expect(409);
     });

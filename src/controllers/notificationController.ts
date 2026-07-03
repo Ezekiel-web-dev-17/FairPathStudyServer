@@ -100,8 +100,8 @@ export const markAdminNotificationRead = async (req: AuthRequest, res: Response)
       return;
     }
 
-    await prisma.notification.update({ where: { id }, data: { read: true } });
-    res.status(200).json({ success: true, message: 'Notification marked as read' });
+    const updated = await prisma.notification.update({ where: { id }, data: { read: true } });
+    res.status(200).json({ success: true, message: 'Notification marked as read', data: updated });
   } catch (error) {
     logger.error('markAdminNotificationRead error: %o', error);
     res.status(500).json({ success: false, error: 'Internal server error' });

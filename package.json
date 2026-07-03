@@ -11,7 +11,7 @@
     "migrate": "npx prisma migrate dev",
     "generate": "npx prisma generate",
     "studio": "npx prisma studio",
-    "test": "cross-env NODE_ENV=test node --experimental-vm-modules --no-warnings node_modules/.bin/jest",
+    "test": "cross-env NODE_ENV=test node --experimental-vm-modules --no-warnings node_modules/.bin/jest --forceExit",
     "prepare": "husky install",
     "lint-staged": "lint-staged"
   },
