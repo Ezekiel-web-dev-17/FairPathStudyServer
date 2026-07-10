@@ -27,9 +27,9 @@ export const generateAccessToken = (payload: TokenPayload): string => {
 /**
  * Generates a long-lived refresh token (7d) with a unique jti.
  */
-export const generateRefreshToken = (payload: TokenPayload): string => {
+export const generateRefreshToken = (payload: TokenPayload, ttl?: boolean): string => {
   const jti = crypto.randomUUID();
-  return jwt.sign({ ...payload, jti }, JWT_REFRESH_SECRET!, { expiresIn: '7d' });
+  return jwt.sign({ ...payload, jti }, JWT_REFRESH_SECRET!, { expiresIn: ttl? "30d":'7d' });
 };
 
 /**

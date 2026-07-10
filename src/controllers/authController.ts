@@ -171,7 +171,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
 
 export const login = async (req: AuthRequest, res: Response, _next: NextFunction): Promise<void> => {
   try {
-    const {email, password} = req.body;
+    const {email, password, remember} = req.body;
     if (!email || !password){
       res.status(400).json({
         status: 'error',
@@ -215,7 +215,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
 
     const payload = { id: user.id, email: user.email, role: user.role };
     const token = generateAccessToken(payload);
-    const newRefreshToken = generateRefreshToken(payload);
+    const newRefreshToken = generateRefreshToken(payload, remember);
 
     res.cookie('token', token, cookieOptions);
     res.cookie('refreshToken', newRefreshToken, refreshCookieOptions);
