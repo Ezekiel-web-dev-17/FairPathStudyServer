@@ -18,7 +18,7 @@ const SENSITIVE_KEYS = [
 /**
  * Helper to recursively scrub sensitive properties from an object or string.
  */
-const scrubSensitiveData = (data: any): any => {
+const scrubSensitiveData = (data: any, visited = new WeakSet()): any => {
   if (!data) return data;
 
   if (typeof data === "string") {
@@ -32,8 +32,36 @@ const scrubSensitiveData = (data: any): any => {
   }
 
   if (typeof data === "object") {
+    // Prevent infinite recursion on circular references
+    if (visited.has(data)) {
+      return "[Circular]";
+    }
+    visited.add(data);
+
     if (Array.isArray(data)) {
-      return data.map(scrubSensitiveData);
+      return data.map((item) => scrubSensitiveData(item, visited));
+    }
+
+    // Only recurse into plain objects to avoid side effects or issues with complex class instances (e.g. pg Pool)
+    const proto = Object.getPrototypeOf(data);
+    if (proto !== null && proto !== Object.prototype) {
+      if (data instanceof Error) {
+        const errorCopy: Record<string, any> = {};
+        errorCopy.name = data.name;
+        errorCopy.message = scrubSensitiveData(data.message, visited);
+        if (data.stack) {
+          errorCopy.stack = scrubSensitiveData(data.stack, visited);
+        }
+        for (const [key, value] of Object.entries(data)) {
+          if (SENSITIVE_KEYS.some((sensitiveKey) => key.toLowerCase().includes(sensitiveKey.toLowerCase()))) {
+            errorCopy[key] = "[REDACTED]";
+          } else {
+            errorCopy[key] = scrubSensitiveData(value, visited);
+          }
+        }
+        return errorCopy;
+      }
+      return data;
     }
 
     const scrubbedObj: Record<string, any> = {};
@@ -41,7 +69,7 @@ const scrubSensitiveData = (data: any): any => {
       if (SENSITIVE_KEYS.some((sensitiveKey) => key.toLowerCase().includes(sensitiveKey.toLowerCase()))) {
         scrubbedObj[key] = "[REDACTED]";
       } else if (typeof value === "object") {
-        scrubbedObj[key] = scrubSensitiveData(value);
+        scrubbedObj[key] = scrubSensitiveData(value, visited);
       } else {
         scrubbedObj[key] = value;
       }
