@@ -36,11 +36,12 @@ describe("User Auth Verification Flow Tests", () => {
           fullName: testFullName,
           email: testEmail,
           password: testPassword,
+          confirmPassword: testPassword,
           role: "STUDENT",
         })
         .expect(201);
 
-      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body).toHaveProperty("success", true);
       expect(response.body.message).toContain("Please check your email");
 
       // Verify user in database
@@ -65,7 +66,7 @@ describe("User Auth Verification Flow Tests", () => {
         })
         .expect(401);
 
-      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body).toHaveProperty("success", false);
       expect(response.body.message).toContain("Please verify your email");
     });
 
@@ -74,7 +75,7 @@ describe("User Auth Verification Flow Tests", () => {
         .get("/api/v1/auth/verify-email?code=invalid_code")
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body).toHaveProperty("success", false);
       expect(response.body.message).toContain("Invalid or expired verification code");
     });
 
@@ -104,7 +105,7 @@ describe("User Auth Verification Flow Tests", () => {
         })
         .expect(200);
 
-      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body).toHaveProperty("success", true);
       expect(response.body.message).toContain("Login successful");
       expect(response.headers["set-cookie"]).toBeDefined();
     });
@@ -114,7 +115,7 @@ describe("User Auth Verification Flow Tests", () => {
         .get("/api/v1/auth/unsubscribe?token=invalid_unsub_token")
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body).toHaveProperty("success", false);
       expect(response.body.message).toContain("Unsubscribe token is invalid or expired");
     });
 
@@ -125,7 +126,7 @@ describe("User Auth Verification Flow Tests", () => {
         .get(`/api/v1/auth/unsubscribe?token=${unsubscribeToken}`)
         .expect(200);
 
-      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body).toHaveProperty("success", true);
       expect(response.body.message).toContain("successfully unsubscribed");
 
       // Verify the state has changed in the database
@@ -141,7 +142,7 @@ describe("User Auth Verification Flow Tests", () => {
         .post("/api/v1/auth/logout")
         .expect(200);
 
-      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body).toHaveProperty("success", true);
       expect(response.body.message).toContain("Logout successful");
 
       const setCookieHeader = response.headers["set-cookie"];

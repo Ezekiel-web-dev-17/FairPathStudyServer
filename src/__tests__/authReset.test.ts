@@ -33,7 +33,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ email: "non_existent_email@fairpath.com" })
         .expect(200);
 
-      expect(responseNonExistent.body).toHaveProperty("status", "success");
+      expect(responseNonExistent.body).toHaveProperty("success", true);
       expect(responseNonExistent.body.message).toContain("If that email exists in our system");
 
       // 2. Real email (unverified) — should still return the same generic response
@@ -55,7 +55,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ email: testEmail })
         .expect(200);
 
-      expect(responseUnverified.body).toHaveProperty("status", "success");
+      expect(responseUnverified.body).toHaveProperty("success", true);
       expect(responseUnverified.body.message).toContain("If that email exists in our system");
     });
 
@@ -65,7 +65,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ email: "bademailformat" })
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body).toHaveProperty("success", false);
       expect(response.body.message).toContain("Invalid email address format");
     });
   });
@@ -112,7 +112,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ token, newPassword })
         .expect(200);
 
-      expect(response.body).toHaveProperty("status", "success");
+      expect(response.body).toHaveProperty("success", true);
       expect(response.body.message).toContain("Password has been reset successfully");
 
       // Verify we can now log in with the new password
@@ -121,7 +121,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ email: testEmail, password: newPassword })
         .expect(200);
 
-      expect(loginResponse.body).toHaveProperty("status", "success");
+      expect(loginResponse.body).toHaveProperty("success", true);
     });
 
     it("should enforce the single-use token guarantee (token reuse fails after password has changed)", async () => {
@@ -143,7 +143,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .post("/api/v1/auth/reset-password")
         .send({ token, newPassword: "anotherSuperSecurePassword987!" })
         .expect(200);
-      expect(firstReset.body.status).toBe("success");
+      expect(firstReset.body.success).toBe(true);
 
       // Second reset using the same token (must fail because passwordHash has changed)
       const secondReset = await request(app)
@@ -151,7 +151,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ token, newPassword: "yetAnotherPassword12345!" })
         .expect(400);
 
-      expect(secondReset.body).toHaveProperty("status", "error");
+      expect(secondReset.body).toHaveProperty("success", false);
       expect(secondReset.body.message).toContain("Password reset link is invalid");
     });
 
@@ -171,7 +171,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ token, newPassword: "short" })
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body).toHaveProperty("success", false);
       expect(response.body.message).toContain("at least 8 characters");
     });
 
@@ -193,7 +193,7 @@ describe("User Password Recovery and Reset Flow Tests", () => {
         .send({ token, newPassword: "validNewPassword123!" })
         .expect(400);
 
-      expect(response.body).toHaveProperty("status", "error");
+      expect(response.body).toHaveProperty("success", false);
       expect(response.body.message).toContain("invalid or has expired");
     });
   });

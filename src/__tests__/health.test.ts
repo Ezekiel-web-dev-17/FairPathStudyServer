@@ -18,8 +18,8 @@ describe("ESM Import & Config Check", () => {
     const response = await request(app).get("/health");
     expect(response.status).toBe(200);
 
-    const data = response.body as { status: string; timestamp: string };
-    expect(data).toHaveProperty("status", "ok");
+    const data = response.body as { success: boolean; timestamp: string };
+    expect(data).toHaveProperty("success", true);
     expect(data).toHaveProperty("timestamp");
     expect(new Date(data.timestamp).getTime()).not.toBeNaN();
   });

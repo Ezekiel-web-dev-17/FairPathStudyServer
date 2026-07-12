@@ -49,13 +49,14 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
       fullName,
       email,
       password,
+      confirmPassword,
       role
-    } = req.body as {fullName: string, email: string, password: string, role?: "ADMIN"};
+    } = req.body as {fullName: string, email: string, password: string, confirmPassword: string, role?: "ADMIN"};
 
-    if(!fullName || !email || !password){
+    if(!fullName || !email || !password || !confirmPassword){
       res.status(400).json({
-        status: 'error',
-        message: 'Full name, email and password are required',
+        success: false,
+        message: 'Full name, email, password, and confirm password fields are required',
       });
 
       return;
@@ -64,10 +65,19 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
     const passwordError = validatePassword(password);
     if (passwordError) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: passwordError,
       });
       return;
+    }
+
+    if (password !== confirmPassword) {
+      res.status(400).json({
+        success: false,
+        message: "Password is not same as confirm password"
+      })
+
+      return
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -77,7 +87,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
     if (existingUser){
       if (existingUser.isVerified) {
         res.status(400).json({
-          status: 'error',
+          success: false,
           message: 'User already exists',
         });
 
@@ -108,7 +118,7 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
       await sendVerificationEmail(email, verificationCode);
 
       res.status(201).json({
-        status: 'success',
+        success: true,
         message: 'User registered successfully. Please check your email to verify your account.',
       });
 
@@ -155,14 +165,14 @@ export const register = async (req: AuthRequest, res: Response, _next: NextFunct
     }
 
     res.status(201).json({
-      status: 'success',
+      success: true,
       message: 'User registered successfully. Please check your email to verify your account.',
     });
 
     return;
   } catch (error) {
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error',
       error
     });
@@ -174,7 +184,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
     const {email, password, remember} = req.body;
     if (!email || !password){
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Email and password are required',
       });
 
@@ -187,7 +197,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
 
     if (!user){
       res.status(401).json({
-        status: 'error',
+        success: false,
         message: 'Invalid email or password',
       });
 
@@ -196,7 +206,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
 
     if (!user.isVerified) {
       res.status(401).json({
-        status: 'error',
+        success: false,
         message: 'Please verify your email before logging in.',
       });
 
@@ -206,7 +216,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid){
       res.status(401).json({
-        status: 'error',
+        success: false,
         message: 'Invalid email or password',
       });
 
@@ -221,7 +231,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
     res.cookie('refreshToken', newRefreshToken, refreshCookieOptions);
     
     res.status(200).json({
-      status: 'success',
+      success: true,
       message: 'Login successful.',
     });
 
@@ -229,7 +239,7 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
   } catch (error) {
     logger.error('Error during login:', error);
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error',
       error
     });
@@ -240,7 +250,7 @@ export const getMe = async (req: AuthRequest, res: Response, _next: NextFunction
   try {
     if (!req.user) {
       res.status(401).json({
-        status: 'error',
+        success: false,
         message: 'Not authenticated',
       });
       return;
@@ -265,19 +275,19 @@ export const getMe = async (req: AuthRequest, res: Response, _next: NextFunction
 
     if (!user) {
       res.status(404).json({
-        status: 'error',
+        success: false,
         message: 'User not found',
       });
       return;
     }
 
     res.status(200).json({
-      status: 'success',
+      success: true,
       data: user,
     });
   } catch (error) {
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error',
       error
     });
@@ -294,7 +304,7 @@ export const updateProfile = async (req: AuthRequest, res: Response, _next: Next
     
     if (!user) {
       res.status(404).json({
-        status: 'error',
+        success: false,
         message: 'User not found',
       });
       return;
@@ -314,14 +324,14 @@ export const updateProfile = async (req: AuthRequest, res: Response, _next: Next
     });
     
     res.status(200).json({
-      status: 'success',
+      success: true,
       message: 'Profile updated successfully.',
     });
 
     return; 
   } catch (error) {
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error',
       error
     });
@@ -334,7 +344,7 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
 
     if (!code || typeof code !== 'string') {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Verification code is required',
       });
       return;
@@ -346,7 +356,7 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
 
     if (!user) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Invalid or expired verification code',
       });
       return;
@@ -354,7 +364,7 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
 
     if (user.verificationCodeExpires && new Date() > user.verificationCodeExpires) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Verification code has expired. Please register again.',
       });
       return;
@@ -375,7 +385,7 @@ export const verifyEmail = async (req: AuthRequest, res: Response, _next: NextFu
     return;
   } catch (error) {
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error during email verification',
       error,
     });
@@ -397,7 +407,7 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
         email = decoded.email;
       } catch (err) {
         res.status(400).json({
-          status: 'error',
+          success: false,
           message: 'Unsubscribe token is invalid or expired.',
         });
         return;
@@ -406,7 +416,7 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
       email = rawEmail;
     } else {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Invalid or missing unsubscribe details.',
       });
       return;
@@ -414,7 +424,7 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
 
     if (!email) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Email address not provided.',
       });
       return;
@@ -456,12 +466,12 @@ export const unsubscribe = async (req: Request, res: Response): Promise<void> =>
     }
 
     res.status(200).json({
-      status: 'success',
+      success: true,
       message: 'You have been successfully unsubscribed from all marketing and onboarding follow-up emails via Resend.',
     });
   } catch (error) {
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error during unsubscribe.',
       error,
     });
@@ -542,20 +552,20 @@ export const logout = async (req: AuthRequest, res: Response): Promise<void> => 
           logger.warn('Session destruction warning during logout (session might not exist in store):', err);
         }
         res.status(200).json({
-          status: 'success',
+          success: true,
           message: 'Logout successful.',
         });
       });
     } else {
       res.status(200).json({
-        status: 'success',
+        success: true,
         message: 'Logout successful.',
       });
     }
   } catch (error) {
     logger.error('Error during logout:', error);
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error during logout.',
     });
   }
@@ -571,7 +581,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     if (!email || typeof email !== 'string') {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'A valid email address is required',
       });
       return;
@@ -580,7 +590,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Invalid email address format',
       });
       return;
@@ -592,7 +602,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     // Enforce generic response regardless of whether user exists to prevent email enumeration
     const genericSuccessResponse = {
-      status: 'success',
+      success: true,
       message: 'If that email exists in our system, we have sent a reset password link.',
     };
 
@@ -617,7 +627,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
   } catch (error) {
     logger.error('Error during forgot password request:', error);
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error during forgot password processing.',
     });
   }
@@ -633,7 +643,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 
     if (!token || typeof token !== 'string' || !newPassword || typeof newPassword !== 'string') {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Token and new password are required',
       });
       return;
@@ -642,7 +652,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const passwordError = validatePassword(newPassword);
     if (passwordError) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: passwordError,
       });
       return;
@@ -652,7 +662,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const decoded = decryptResetToken(token);
     if (!decoded || !decoded.email || !decoded.passwordHash || !decoded.expiresAt) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Invalid or malformed reset token payload',
       });
       return;
@@ -662,7 +672,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const now = Math.floor(Date.now() / 1000);
     if (decoded.expiresAt < now) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Password reset link is invalid or has expired',
       });
       return;
@@ -674,7 +684,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 
     if (!user) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'User associated with this token does not exist',
       });
       return;
@@ -683,7 +693,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     // Verify password hash has not changed (ensures single-use reset link)
     if (user.passwordHash !== decoded.passwordHash) {
       res.status(400).json({
-        status: 'error',
+        success: false,
         message: 'Password reset link is invalid or has already been used',
       });
       return;
@@ -745,20 +755,20 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
           logger.warn('Session destruction warning during password reset:', err);
         }
         res.status(200).json({
-          status: 'success',
+          success: true,
           message: 'Password has been reset successfully. Please log in with your new password.',
         });
       });
     } else {
       res.status(200).json({
-        status: 'success',
+        success: true,
         message: 'Password has been reset successfully. Please log in with your new password.',
       });
     }
   } catch (error) {
     logger.error('Error during password reset:', error);
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error during password reset processing.',
     });
   }
@@ -774,7 +784,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
 
     if (!oldRefreshToken) {
       res.status(401).json({
-        status: 'error',
+        success: false,
         message: 'Refresh token cookie is missing',
       });
       return;
@@ -785,7 +795,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       decoded = verifyRefreshToken(oldRefreshToken);
     } catch (err) {
       res.status(403).json({
-        status: 'error',
+        success: false,
         message: 'Invalid or expired refresh token',
       });
       return;
@@ -795,7 +805,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     const isBlacklisted = await isTokenBlacklisted(decoded.jti);
     if (isBlacklisted) {
       res.status(403).json({
-        status: 'error',
+        success: false,
         message: 'Refresh token has been blacklisted',
       });
       return;
@@ -811,7 +821,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
 
     if (!user || !user.isVerified) {
       res.status(403).json({
-        status: 'error',
+        success: false,
         message: 'User no longer exists or is unverified',
       });
       return;
@@ -827,13 +837,13 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     res.cookie('refreshToken', newRefreshToken, refreshCookieOptions);
 
     res.status(200).json({
-      status: 'success',
+      success: true,
       message: 'Tokens refreshed successfully.',
     });
   } catch (error) {
     logger.error('Error during token refresh:', error);
     res.status(500).json({
-      status: 'error',
+      success: false,
       message: 'Internal server error during token refresh.',
     });
   }

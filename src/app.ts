@@ -51,7 +51,7 @@ if (NODE_ENV === "development") {
 
 // ── Health Check (before rate limiting so monitoring isn't blocked) ──
 app.get("/health", (_req, res) => {
-    res.status(200).json({ status: "ok", timestamp: new Date() });
+    res.status(200).json({ success: true, timestamp: new Date() });
 });
 
 // ── Arcjet Rate Limiting ──

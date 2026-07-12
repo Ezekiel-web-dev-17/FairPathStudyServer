@@ -75,7 +75,7 @@ describe("Refresh Token Rotation and Access Token Blacklisting Tests", () => {
         .set("Cookie", [refreshCookie])
         .expect(200);
 
-      expect(refreshRes.body).toHaveProperty("status", "success");
+      expect(refreshRes.body).toHaveProperty("success", true);
       
       const newCookies = refreshRes.headers["set-cookie"] as any;
       expect(newCookies).toBeDefined();
@@ -98,7 +98,7 @@ describe("Refresh Token Rotation and Access Token Blacklisting Tests", () => {
         .post("/api/v1/auth/refresh-token")
         .set("Cookie", [refreshCookie])
         .expect(200);
-      expect(refreshRes1.body.status).toBe("success");
+      expect(refreshRes1.body.success).toBe(true);
 
       // Second refresh using the SAME refresh token should fail (rotated/blacklisted)
       const refreshRes2 = await request(app)
@@ -106,7 +106,7 @@ describe("Refresh Token Rotation and Access Token Blacklisting Tests", () => {
         .set("Cookie", [refreshCookie])
         .expect(403);
 
-      expect(refreshRes2.body).toHaveProperty("status", "error");
+      expect(refreshRes2.body).toHaveProperty("success", false);
       expect(refreshRes2.body.message).toContain("blacklisted");
     });
   });
@@ -128,7 +128,7 @@ describe("Refresh Token Rotation and Access Token Blacklisting Tests", () => {
         .get("/api/v1/users/me")
         .set("Cookie", [accessCookie])
         .expect(200);
-      expect(meBeforeLogout.body.status).toBe("success");
+      expect(meBeforeLogout.body.success).toBe(true);
 
       // 3. Logout (should blacklist the access token)
       await request(app)
