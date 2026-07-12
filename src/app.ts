@@ -17,7 +17,7 @@ const app = express();
 app.use(helmet());
 app.use(
     cors({
-        origin: "http://localhost:5173", // Customize for production
+        origin: "http://localhost:3000", // Customize for production
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true,
