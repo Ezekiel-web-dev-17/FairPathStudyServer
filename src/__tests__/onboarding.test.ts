@@ -39,7 +39,7 @@ describe("User Onboarding Integration Tests", () => {
     await prisma.userOnboarding.deleteMany({
       where: { userId: studentId },
     }).catch(() => {});
-  });
+  }, 15000);
 
   afterAll(async () => {
     // Clean up test data

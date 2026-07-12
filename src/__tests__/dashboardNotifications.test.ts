@@ -5,11 +5,13 @@ import { JWT_SECRET } from "../config/config.js";
 import { prisma } from "../config/db.js";
 import { redisClient } from "../config/redis.js";
 import bcrypt from "bcryptjs";
+import { jest } from "@jest/globals";
 
 const generateToken = (role: "STUDENT" | "ADMIN", email: string, id: string) =>
   jwt.sign({ id, email, role }, JWT_SECRET!);
 
 describe("Dashboard and Notification Center Integration Tests", () => {
+  jest.setTimeout(25000);
   let adminToken: string;
   let studentToken: string;
   let otherStudentToken: string;

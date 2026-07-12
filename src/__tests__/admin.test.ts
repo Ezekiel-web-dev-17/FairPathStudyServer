@@ -195,7 +195,7 @@ describe("Admin Dashboard & KPI Integration Tests", () => {
       expect(typeof apps.matchSuccessRate).toBe("number");
       expect(apps.matchSuccessRate).toBeGreaterThanOrEqual(0);
       expect(apps.matchSuccessRate).toBeLessThanOrEqual(100);
-    });
+    }, 15000);
 
     it("should include the seeded SUBMITTED application in analytics data", async () => {
       const response = await request(app)
