@@ -6,7 +6,7 @@ import cookieParser from "cookie-parser";
 import apiRoutes from "./routes/api.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { rateLimitMiddleware } from "./middleware/rateLimit.js";
-import { NODE_ENV, SESSION_SECRET, COOKIE_MAX_AGE } from "./config/config.js";
+import { NODE_ENV, SESSION_SECRET, COOKIE_MAX_AGE, FRONTEND_URL } from "./config/config.js";
 import session from 'express-session';
 import { RedisStore } from 'connect-redis';
 import { redisClient } from './config/redis.js';
@@ -17,7 +17,9 @@ const app = express();
 app.use(helmet());
 app.use(
     cors({
-        origin: "http://localhost:3000", // Customize for production
+        // Use FRONTEND_URL from env — exact origin required when credentials:true.
+        // Never use '*' with credentials: it causes the browser to block cookies.
+        origin: FRONTEND_URL ?? "http://localhost:3000",
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
         credentials: true,
@@ -36,8 +38,8 @@ app.use(
         cookie: {
             secure: NODE_ENV === 'production', // true requires HTTPS
             httpOnly: true, // Blocks XSS
-            sameSite: 'strict', // Blocks CSRF
-            maxAge: Number(COOKIE_MAX_AGE)// 1 day in milliseconds
+            sameSite: 'strict', // Blocks CSRF — safe because frontend proxies via Next.js same-origin
+            maxAge: Number(COOKIE_MAX_AGE) // 1 day in milliseconds
         }
     })
 );
