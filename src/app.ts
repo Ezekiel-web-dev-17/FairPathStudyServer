@@ -13,6 +13,9 @@ import { redisClient } from './config/redis.js';
 
 const app = express();
 
+// Add this line immediately after initializing express:
+app.set("trust proxy", 1); 
+
 // ── Standard Middlewares ──
 app.use(helmet());
 app.use(
