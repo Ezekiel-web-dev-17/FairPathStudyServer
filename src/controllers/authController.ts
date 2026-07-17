@@ -233,6 +233,10 @@ export const login = async (req: AuthRequest, res: Response, _next: NextFunction
     res.status(200).json({
       success: true,
       message: 'Login successful.',
+      data: {
+        email: user.email,
+        firstName: user.firstName,
+      }
     });
 
     return;
@@ -259,17 +263,8 @@ export const getMe = async (req: AuthRequest, res: Response, _next: NextFunction
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
-        id: true,
         email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isVerified: true,
-        countryOfOrigin: true,
-        targetDestinations: true,
-        academicData: true,
-        preferences: true,
-        profileCompletionPercent: true,
+        firstName: true
       }
     });
 
